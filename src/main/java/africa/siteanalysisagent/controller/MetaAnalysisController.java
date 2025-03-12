@@ -55,9 +55,9 @@ public class MetaAnalysisController {
                                 url + "successful\n"
                                 + "\nSEO Report:"
                                 + "\n"
-                                + seoReport
-                                + "\nMeta Tag Issues:"
-                                + "\n" + metaTagIssues);
+                                + seoReport);
+//                                + "\nMeta Tag Issues:"
+//                                + "\n" + metaTagIssues);
                 return "Scraping successful";
             } else {
                 return "Unable to scrape" + url;
