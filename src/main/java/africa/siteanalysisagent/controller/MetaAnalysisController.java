@@ -19,7 +19,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 @RequestMapping("/api/v1/meta-analysis")
 public class MetaAnalysisController {
 
+    @Autowired
     private MetaAnalysisService metaAnalysisService;
+    @Autowired
     private TelexService telexService;
 
     @PostMapping("/scrape")
@@ -35,12 +37,12 @@ public class MetaAnalysisController {
                 List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
 
                 if (metaTagIssues.size() > 0) {
-                    System.out.println("Meta Tag Issues: " + metaTagIssues);
+                    System.out.println("Meta Tags Found: " + metaTagIssues);
                 }
 
                 telexService.notifyTelex(
-                        "Site analysis for" +
-                                url + "successful"
+                        "Site analysis for " +
+                                url + "successful\n"
                                 + "\nSEO Report:"
                                 + "\n"
                                 + seoReport
@@ -52,7 +54,7 @@ public class MetaAnalysisController {
             }
 
         } catch (Exception e) {
-            return "Invalid URL. please input a single page URL";
+            return "Failed to scrape" + url + e.getLocalizedMessage();
         }
     }
 
