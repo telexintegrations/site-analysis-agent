@@ -4,7 +4,7 @@ import java.util.Date;
 import java.util.List;
 
 public record Data(
-        Date date,
+        DateInfo date,
         Descriptions descriptions,
         boolean is_active,
         String integration_type,
@@ -15,4 +15,8 @@ public record Data(
         String target_url,
         String tick_url) {
 
+    public record DateInfo(
+            String created_at,
+            String updated_at
+    ) {}
 }
