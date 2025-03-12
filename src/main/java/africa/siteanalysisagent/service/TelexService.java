@@ -17,7 +17,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class TelexService {
-    private final String TELEX_CHANNEL_WEBHOOK= "https://ping.telex.im/v1/webhooks/";
+    private final String TELEX_CHANNEL_WEBHOOK = "https://ping.telex.im/v1/webhooks/";
 
     private final RestTemplate restTemplate;
 
@@ -27,7 +27,7 @@ public class TelexService {
     public void notifyTelex(String message) {
         String channelHookUrl = TELEX_CHANNEL_WEBHOOK + channelId;
 
-        AnalysisRequest requestData  = AnalysisRequest.builder()
+        AnalysisRequest requestData = AnalysisRequest.builder()
                 .event_name("web scrape")
                 .username("site-analyzer")
                 .status("success")
