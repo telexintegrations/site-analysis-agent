@@ -1,5 +1,6 @@
 package africa.siteanalysisagent.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -12,11 +13,14 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
-@Service
 @Slf4j
+@Service
+@RequiredArgsConstructor
 public class MetaAnalysisServiceImpl implements MetaAnalysisService {
 
     private static final int TIMEOUT = 10000; // 10 seconds
+
+    private final TelexService telexService;
 
     @Override
     public boolean isSingleUrl(String url) {
@@ -90,6 +94,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
             } else{
                 metaTagIssues.forEach(issue -> report.append("- ").append(issue).append('\n'));
             }
+            telexService.notifyTelex(report.toString());
             return report.toString();
         } catch (IOException | IllegalArgumentException e) {
             return "Failed to generate SEO report: " + e.getMessage();
