@@ -25,28 +25,18 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     @Override
     public boolean isSingleUrl(String url) {
         // validation to ensure url is not a homepage
-        if (url == null || url.matches(".*/.*")){
-            log.warn("Invalid URL detected: {}. Please input a single page URL, not a homepage.", url);
+        if (url == null || !url.matches(".*/.*")){
+            log.warn("Invalid URL detected: {}. Please input a single page URL.", url);
             return false;
         }
         return true;
     }
 
-    @Override
-    public boolean isHomepage(String url) {
-        try {
-            URI uri = new URI(url);
-            String path = uri.getPath();
-            return path == null || path.equals("/") || path.isEmpty();
-        } catch (URISyntaxException e) {
-            log.error("invalid URL format: {}", url);
-            return true;
-        }
-    }
+
 
     @Override
     public Document scrape(String url) throws IOException {
-        if(!isSingleUrl(url) || (isHomepage(url))){
+        if(!isSingleUrl(url)){
             throw new IllegalArgumentException("Invalid URL. please input a single page URL");
         }
         return Jsoup.connect(url).timeout(TIMEOUT).get();
@@ -59,25 +49,25 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
         // check title tag
         Element titletag = document.selectFirst("title");
         if(titletag == null || titletag.text().isBlank()){
-            metaTagIssues.add("Missing title tag");
+            metaTagIssues.add("Missing title tag\n");
         }else {
-            metaTagIssues.add("Title tag: "+ titletag.text());
+            metaTagIssues.add("Title tag: "+ titletag.text()+ "\n");
         }
 
         // check meta description
          Element metaDescription =document.selectFirst("meta[name=description]");
          if(metaDescription == null || metaDescription.attr("content").isBlank()){
-             metaTagIssues.add("Missing meta description");
+             metaTagIssues.add("Missing meta description\n");
          } else {
-             metaTagIssues.add("Meta Description: "+ metaDescription.attr("content"));
+             metaTagIssues.add("Meta Description: "+ metaDescription.attr("content") + "\n");
          }
 
          // check meta keywords
         Element metaKeyword =document.selectFirst("meta[name=keyword]");
          if ( metaKeyword == null || metaKeyword.attr("content").isBlank()){
-             metaTagIssues.add("Missing meta keywords");
+             metaTagIssues.add("Missing meta keywords\n");
          }else{
-             metaTagIssues.add("Meta Keywords: " + metaKeyword.attr("content"));
+             metaTagIssues.add("Meta Keywords: " + metaKeyword.attr("content") + "\n");
          }
          return metaTagIssues;
     }
