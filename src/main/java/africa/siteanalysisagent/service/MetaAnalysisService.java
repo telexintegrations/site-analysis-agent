@@ -8,11 +8,11 @@ import java.util.List;
 public interface MetaAnalysisService {
     boolean isSingleUrl (String url);
 
-    boolean isHomepage (String url);
-
     Document scrape(String url) throws IOException;
 
     List<String> checkMetaTags(Document document);
 
     String generateSeoReport(String url);
+
+    boolean isHomepage(String url);
 }
