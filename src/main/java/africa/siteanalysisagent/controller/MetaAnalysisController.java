@@ -1,6 +1,7 @@
 package africa.siteanalysisagent.controller;
 
 import africa.siteanalysisagent.dto.ApiErrorResponse;
+import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.dto.UrlRequest;
 import africa.siteanalysisagent.model.TelexIntergration;
 import africa.siteanalysisagent.service.MetaAnalysisService;
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,33 +33,33 @@ public class MetaAnalysisController {
 
     @Autowired
     private MetaAnalysisService metaAnalysisService;
-    @Autowired
-    private TelexService telexService;
+
+    private static String removeHtmlTags(String input) {
+        return input.replaceAll("</?\\w+[^>]*>", "");
+    }
 
     @PostMapping("/scrape")
-    public String scrapeAndGenerateUrlReport(@RequestBody UrlRequest entity) {
-        String url = entity.getUrl();
+    public String scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest entity) {
 
+        Pattern regex = Pattern.compile("^(http|https)://.*$");
+        String userInput = removeHtmlTags(entity.message());
+
+        if (!regex.matcher(userInput).matches()) {
+            return "Invalid URL";
+        }
+
+        String url = userInput;
         try {
-
             Document document = null;
             document = metaAnalysisService.scrape(url);
-            String seoReport = metaAnalysisService.generateSeoReport(url);
+            metaAnalysisService.generateSeoReport(url);
             if (document != null) {
                 List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
 
                 if (metaTagIssues.size() > 0) {
-                    System.out.println("Meta Tags Found: " + metaTagIssues);
+
                 }
 
-                telexService.notifyTelex(
-                        "Site analysis for " +
-                                url + "successful\n"
-                                + "\nSEO Report:"
-                                + "\n"
-                                + seoReport);
-//                                + "\nMeta Tag Issues:"
-//                                + "\n" + metaTagIssues);
                 return "Scraping successful";
             } else {
                 return "Unable to scrape" + url;
@@ -71,7 +73,7 @@ public class MetaAnalysisController {
     @CrossOrigin(origins = "*")
     @GetMapping("/telex")
     public ResponseEntity<?> getMethodName() {
-        System.out.println("called telex config file");
+
         String json = """
                 {
                   "data": {
@@ -95,7 +97,7 @@ public class MetaAnalysisController {
                       " Broken link detection",
                       " AI-powered meta suggestions"
                     ],
-                    "author": "Telin Backend Devs",
+                    "author": "Telin",
                     "settings": [
                         {
                             "label": "webhook_url",
@@ -104,7 +106,6 @@ public class MetaAnalysisController {
                             "required": true,
                             "default": ""
                         }
-            
                     ],
                     "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
                     "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape"
