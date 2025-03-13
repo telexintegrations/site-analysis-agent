@@ -104,7 +104,7 @@ public class MetaAnalysisController {
                             "type": "text",
                             "description": "provide your telex channel webhook url",
                             "required": true,
-                            "default": "Hello, I am a bot. How can I help you today?"
+                            "default": ""
                         }
                     ],
                     "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
