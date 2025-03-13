@@ -2,24 +2,21 @@ package africa.siteanalysisagent.controller;
 
 import africa.siteanalysisagent.dto.ApiErrorResponse;
 import africa.siteanalysisagent.dto.TelexUserRequest;
-import africa.siteanalysisagent.dto.UrlRequest;
 import africa.siteanalysisagent.model.TelexIntergration;
 import africa.siteanalysisagent.service.MetaAnalysisService;
-import africa.siteanalysisagent.service.TelexService;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
