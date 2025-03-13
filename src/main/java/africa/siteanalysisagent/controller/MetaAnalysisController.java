@@ -92,7 +92,7 @@ public class MetaAnalysisController {
                     "key_features": [
                       "Single page meta analysis",
                       "Internal link crawling",
-                      " Broken link detection"
+                      " Broken link detection",
                       " AI-powered meta suggestions"
                     ],
                     "author": "Telin Backend Devs",
@@ -103,7 +103,7 @@ public class MetaAnalysisController {
                             "description": "provide your telex channel webhook url",
                             "required": true,
                             "default": ""
-                        },
+                        }
             
                     ],
                     "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
