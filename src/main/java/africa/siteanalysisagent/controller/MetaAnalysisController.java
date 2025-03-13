@@ -1,6 +1,7 @@
 package africa.siteanalysisagent.controller;
 
 import africa.siteanalysisagent.dto.ApiErrorResponse;
+import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.dto.UrlRequest;
 import africa.siteanalysisagent.model.TelexIntergration;
 import africa.siteanalysisagent.service.MetaAnalysisService;
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,33 +33,33 @@ public class MetaAnalysisController {
 
     @Autowired
     private MetaAnalysisService metaAnalysisService;
-    @Autowired
-    private TelexService telexService;
+
+    private static String removeHtmlTags(String input) {
+        return input.replaceAll("</?\\w+[^>]*>", "");
+    }
 
     @PostMapping("/scrape")
-    public String scrapeAndGenerateUrlReport(@RequestBody UrlRequest entity) {
-        String url = entity.getUrl();
+    public String scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest entity) {
 
+        Pattern regex = Pattern.compile("^(http|https)://.*$");
+        String userInput = removeHtmlTags(entity.message());
+
+        if (!regex.matcher(userInput).matches()) {
+            return "Invalid URL";
+        }
+
+        String url = userInput;
         try {
-
             Document document = null;
             document = metaAnalysisService.scrape(url);
-            String seoReport = metaAnalysisService.generateSeoReport(url);
+            metaAnalysisService.generateSeoReport(url);
             if (document != null) {
                 List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
 
                 if (metaTagIssues.size() > 0) {
-                    System.out.println("Meta Tags Found: " + metaTagIssues);
+
                 }
 
-                telexService.notifyTelex(
-                        "Site analysis for " +
-                                url + "successful\n"
-                                + "\nSEO Report:"
-                                + "\n"
-                                + seoReport
-                                + "\nMeta Tag Issues:"
-                                + "\n" + metaTagIssues);
                 return "Scraping successful";
             } else {
                 return "Unable to scrape" + url;
@@ -71,7 +73,7 @@ public class MetaAnalysisController {
     @CrossOrigin(origins = "*")
     @GetMapping("/telex")
     public ResponseEntity<?> getMethodName() {
-        System.out.println("called telex config file");
+
         String json = """
                 {
                   "data": {
@@ -94,22 +96,16 @@ public class MetaAnalysisController {
                       "Auto reply to customers on Whatsapp in a minute",
                       "Automatically get notifications of customer messages sent to whatsapp"
                     ],
-                    "author": "Telin Backend Devs",
+                    "author": "Telin",
                     "settings": [
                         {
                             "label": "Message",
                             "type": "text",
                             "required": true,
                             "default": "Hello, I am a bot. How can I help you today?"
-                        },
-                        {
-                            "label": "Time interval",
-                            "type": "text",
-                            "required": true,
-                            "default": "* * * * *"
                         }
                     ],
-                    "target_url": "https://thisinternshiprocks-e8d4gycsc9gec0ht.southafricanorth-01.azurewebsites.net/reply-with-ai",
+                    "target_url": "https://skh7r0lv-8080.euw.devtunnels.ms/api/v1/meta-analysis/scrape",
                     "tick_url": "https://thisinternshiprocks-e8d4gycsc9gec0ht.southafricanorth-01.azurewebsites.net/reply-with-ai-tick"
                     }
                 }
