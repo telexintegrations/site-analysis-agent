@@ -83,34 +83,31 @@ public class MetaAnalysisController {
                       "app_name": "Site Analysis Agent",
                       "app_description": "Site Analysis agent for Telex Integration: A tool that helps you analyze your website's SEO and meta tags.",
                       "app_logo": "https://lh3.googleusercontent.com/pw/AP1GczPfSJ0ewO2h17zvsr1EG3Kv_2I_Tl3Cgwb16VuYJ-eRo9sX9J7xXN4X0UpiEQsjTY_EpWH_-gjYaYdWO_JROaxEc-uxzuqCY9ZfM9yl2BzwwIoAicYNJROiI4KENYLy3V76X79ya6fEvrrxbmdAKmtS=w830-h828-s-no-gm?authuser=0",
-                      "app_url": "https://thetechhut.co/whatsapp/",
+                      "app_url": "https://site-analysis-agent.onrender.com/",
                       "background_color": "#fff"
                     },
-                    "is_active": true,
-                    "integration_type": "modifier",
                     "integration_category": "CRM & Customer Support",
+                    "integration_type": "modifier",
+                    "is_active": true,
                     "key_features": [
-                      "Gemini API Powered",
-                      "Auto reply to customers on Whatsapp in a minute",
-                      "Automatically get notifications of customer messages sent to whatsapp"
+                      "Single page meta analysis",
+                      "Internal link crawling",
+                      " Broken link detection"
+                      " AI-powered meta suggestions"
                     ],
                     "author": "Telin Backend Devs",
                     "settings": [
                         {
-                            "label": "Message",
+                            "label": "webhook_url",
                             "type": "text",
+                            "description": "provide your telex channel webhook url",
                             "required": true,
-                            "default": "Hello, I am a bot. How can I help you today?"
+                            "default": ""
                         },
-                        {
-                            "label": "Time interval",
-                            "type": "text",
-                            "required": true,
-                            "default": "* * * * *"
-                        }
+            
                     ],
-                    "target_url": "https://thisinternshiprocks-e8d4gycsc9gec0ht.southafricanorth-01.azurewebsites.net/reply-with-ai",
-                    "tick_url": "https://thisinternshiprocks-e8d4gycsc9gec0ht.southafricanorth-01.azurewebsites.net/reply-with-ai-tick"
+                    "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
+                    "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape"
                     }
                 }
                 """;
