@@ -12,7 +12,7 @@ public interface MetaAnalysisService {
 
     List<String> checkMetaTags(Document document);
 
-    String generateSeoReport(String url);
+    String generateSeoReport(String url, String webhook_url);
 
     boolean isHomepage(String url);
 }
