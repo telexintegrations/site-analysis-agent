@@ -72,7 +72,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     }
 
     @Override
-    public String generateSeoReport(String url, String webhook_url) {
+    public String generateSeoReport(String url) {
         try {
             Document document = scrape(url);
             List<String> metaTagIssues = checkMetaTags(document);
@@ -84,7 +84,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
                 metaTagIssues.forEach(issue -> report.append("- ").append(issue).append('\n'));
             }
 
-            telexService.notifyTelex(webhook_url,report.toString());
+            telexService.notifyTelex(report.toString());
             return report.toString();
         } catch (IOException | IllegalArgumentException e) {
             return "Failed to generate SEO report: " + e.getMessage();
