@@ -16,9 +16,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MetaAnalysisServiceImpl implements MetaAnalysisService {
 
+    private final TelexService telexService;
+
     private static final int TIMEOUT = 10000; // 10 seconds
 
-    private final TelexService telexService;
+
+
 
     @Override
     public boolean isSingleUrl(String url) {
@@ -69,7 +72,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     }
 
     @Override
-    public String generateSeoReport(String url) {
+    public String generateSeoReport(String url, String webhook) {
         try {
             Document document = scrape(url);
             List<String> metaTagIssues = checkMetaTags(document);
@@ -80,7 +83,11 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
             } else {
                 metaTagIssues.forEach(issue -> report.append("- ").append(issue).append('\n'));
             }
-            telexService.notifyTelex(report.toString());
+
+            if(webhook == null || webhook.isBlank()){
+                return "webhook is required";
+            }
+            telexService.notifyTelex(webhook,report.toString());
             return report.toString();
         } catch (IOException | IllegalArgumentException e) {
             return "Failed to generate SEO report: " + e.getMessage();
