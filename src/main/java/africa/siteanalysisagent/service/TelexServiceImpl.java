@@ -20,18 +20,12 @@ public class TelexServiceImpl implements TelexService {
 
     private final RestTemplate restTemplate;
 
-
-    @Value("${telex.channel.id}")
-    private String channelId;
-
-    @Value("${telex.channel.webhook}")
-    private String telexWebhook;
-
+    @Value("${telex.channel.webhook.channel.id}")
+    private String telexWebhookChannelId;
 
 
     @Override
     public void notifyTelex(String message) {
-        String channelHookUrl = telexWebhook + channelId;
 
         AnalysisRequest requestData = AnalysisRequest.builder()
                 .event_name("web scrape")
@@ -47,7 +41,7 @@ public class TelexServiceImpl implements TelexService {
         HttpEntity<AnalysisRequest> entity = new HttpEntity<>(requestData, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(channelHookUrl, entity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(telexWebhookChannelId, entity, String.class);
             log.info("Response code: {}", response.getStatusCode());
             log.info("Response: {}", response);
         } catch (Exception ex) {
