@@ -4,4 +4,5 @@ import java.util.List;
 
 public record TelexUserRequest(
         String message,
-        String webhook_url){}
+        List<Setting> settings) {
+}

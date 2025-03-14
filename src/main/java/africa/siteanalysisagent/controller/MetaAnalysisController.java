@@ -49,7 +49,7 @@ public class MetaAnalysisController {
 
         String url = userInput;
         try {
-            metaAnalysisService.generateSeoReport(url, entity.webhook_url());
+            metaAnalysisService.generateSeoReport(url);
         } catch (Exception e) {
             return "Failed to scrape" + url + e.getLocalizedMessage();
         }
