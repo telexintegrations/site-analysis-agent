@@ -87,7 +87,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
             if(webhook == null || webhook.isBlank()){
                 return "webhook is required";
             }
-            telexService.notifyTelex(webhook,report.toString());
+            telexService.notifyTelex(report.toString(),webhook);
             return report.toString();
         } catch (IOException | IllegalArgumentException e) {
             return "Failed to generate SEO report: " + e.getMessage();
