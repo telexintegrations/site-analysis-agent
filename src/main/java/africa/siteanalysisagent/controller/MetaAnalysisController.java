@@ -49,11 +49,11 @@ public class MetaAnalysisController {
 
         String url = userInput;
         try {
-            metaAnalysisService.generateSeoReport(url, entity.webhook());
+            metaAnalysisService.generateSeoReport(url, entity.webhook_url());
         } catch (Exception e) {
             return "Failed to scrape" + url + e.getLocalizedMessage();
         }
-        return "scrape successfully send to telex";
+        return "scraping sent to telex";
     }
 
     @CrossOrigin(origins = "*")
