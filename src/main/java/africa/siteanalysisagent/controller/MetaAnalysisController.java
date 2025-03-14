@@ -5,6 +5,7 @@ import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.model.TelexIntergration;
 import africa.siteanalysisagent.service.MetaAnalysisService;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,10 +27,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequestMapping("/api/v1/meta-analysis")
+@RequiredArgsConstructor
 public class MetaAnalysisController {
 
-    @Autowired
-    private MetaAnalysisService metaAnalysisService;
+    private final MetaAnalysisService metaAnalysisService;
+
 
     private static String removeHtmlTags(String input) {
         return input.replaceAll("</?\\w+[^>]*>", "");
@@ -47,24 +49,11 @@ public class MetaAnalysisController {
 
         String url = userInput;
         try {
-            Document document = null;
-            document = metaAnalysisService.scrape(url);
-            metaAnalysisService.generateSeoReport(url);
-            if (document != null) {
-                List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
-
-                if (metaTagIssues.size() > 0) {
-
-                }
-
-                return "Scraping successful";
-            } else {
-                return "Unable to scrape" + url;
-            }
-
+            metaAnalysisService.generateSeoReport(url, entity.webhook());
         } catch (Exception e) {
             return "Failed to scrape" + url + e.getLocalizedMessage();
         }
+        return "scrape successfully send to telex";
     }
 
     @CrossOrigin(origins = "*")
