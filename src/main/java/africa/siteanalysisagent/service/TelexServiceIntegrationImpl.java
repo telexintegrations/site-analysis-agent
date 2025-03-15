@@ -1,7 +1,7 @@
 package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.TelexUserRequest;
-import africa.siteanalysisagent.model.TelexIntergration;
+import africa.siteanalysisagent.model.TelexIntegration;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,10 +64,10 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
 
     @Override
-    public TelexIntergration getTelexConfig() throws JsonProcessingException {
+    public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
-        return objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntergration.class);
+        return objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
     }
 
     @Override

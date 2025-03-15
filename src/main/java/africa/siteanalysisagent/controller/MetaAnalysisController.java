@@ -3,7 +3,7 @@ package africa.siteanalysisagent.controller;
 import africa.siteanalysisagent.dto.ApiErrorResponse;
 import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.model.ApiResponse;
-import africa.siteanalysisagent.model.TelexIntergration;
+import africa.siteanalysisagent.model.TelexIntegration;
 
 import africa.siteanalysisagent.service.TelexServiceIntegration;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +29,8 @@ public class MetaAnalysisController {
 
 
     @PostMapping("/scrape")
-    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest entity) throws IOException {
-        Map<String,Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(entity);
+    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
+        Map<String,Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
         return ResponseEntity.ok(new ApiResponse<>(
                 HttpStatus.OK.value(),
                 response,
@@ -43,7 +43,7 @@ public class MetaAnalysisController {
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
-            TelexIntergration telexIntegration = telexServiceIntegration.getTelexConfig();
+            TelexIntegration telexIntegration = telexServiceIntegration.getTelexConfig();
             return ResponseEntity.ok(new ApiResponse<>(
                     HttpStatus.OK.value(),
                     telexIntegration,
