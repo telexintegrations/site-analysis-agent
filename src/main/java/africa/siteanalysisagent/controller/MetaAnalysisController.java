@@ -44,7 +44,7 @@ public class MetaAnalysisController {
     public ResponseEntity<?> getTelexConfiguration() {
         try {
             TelexIntegration telexIntegration = telexServiceIntegration.getTelexConfig();
-            return telexIntegration;
+            return ResponseEntity.ok(telexIntegration);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     new ApiErrorResponse(
