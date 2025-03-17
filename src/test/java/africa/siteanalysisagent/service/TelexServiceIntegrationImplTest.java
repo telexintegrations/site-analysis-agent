@@ -1,24 +1,23 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.dto.Setting;
 import africa.siteanalysisagent.dto.TelexUserRequest;
+import africa.siteanalysisagent.model.Data;
+import africa.siteanalysisagent.model.Descriptions;
+import africa.siteanalysisagent.model.Setting;
 import africa.siteanalysisagent.model.TelexIntegration;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 
 @ExtendWith(MockitoExtension.class)
 class TelexServiceIntegrationImplTest {
@@ -29,41 +28,84 @@ class TelexServiceIntegrationImplTest {
     @InjectMocks
     private TelexServiceIntegrationImpl telexServiceIntegration;
 
-    @BeforeEach
-    void setUp() {
-        telexServiceIntegration = new TelexServiceIntegrationImpl(metaAnalysisService);
+    private TelexIntegration createValidTelexIntegration() {
+        List<Setting> settings = List.of(
+                new Setting("webhook_url", "text", "provide your telex channel webhook url", true, "https://webhook.url")
+        );
+        Data.DateInfo dateInfo = new Data.DateInfo("2025-03-12", "2025-03-12");
+        Descriptions descriptions = new Descriptions(
+                "Site Analysis Agent",
+                "Site Analysis agent for Telex Integration: A tool that helps you analyze your website's SEO and meta tags.",
+                "https://example.com/logo.png",
+                "https://site-analysis-agent.onrender.com/",
+                "#fff"
+        );
+        Data data = new Data(
+                dateInfo,
+                descriptions,
+                true,
+                "modifier",
+                "CRM & Customer Support",
+                List.of("Single page meta analysis", "Internal link crawling", "Broken link detection", "AI-powered meta suggestions"),
+                "Telin",
+                settings,
+                "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
+                "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape"
+        );
+        return new TelexIntegration(data);
     }
 
     @Test
-    void testGetTelexConfig_Success() throws JsonProcessingException {
-        TelexIntegration telexIntegration = telexServiceIntegration.getTelexConfig();
-
-        assertNotNull(telexIntegration);
-        assertNotNull(telexIntegration.data());
-        assertEquals("Site Analysis Agent", telexIntegration.data().descriptions().app_name());
+    public void testGetTelexConfigThrowsExceptionDueToMissingWebhookUrl() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            telexServiceIntegration.getTelexConfig();
+        });
+        assertEquals("Webhook URL is missing from Telex settings", exception.getMessage());
     }
 
     @Test
-    void testScrapeAndGenerateUrlReport_Success() throws IOException {
-        String validUrl = "https://example.com";
-        List<Setting> mockSettings = List.of();
-        TelexUserRequest request = new TelexUserRequest(validUrl, mockSettings);
+    public void testScrapeAndGenerateUrlReportWithInvalidUrl() {
+        // Provide an input that will not pass the URL regex (after sanitization).
+        TelexUserRequest request = new TelexUserRequest( "invalid-url", List.of());
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+        });
+        assertEquals("Invalid URL", exception.getMessage());
+    }
 
-        Document mockDocument = new Document(validUrl);
-        String mockSeoReport = "SEO Report";
-        List<String> mockMetaTagIssues = List.of("Missing description tag");
+    @Test
+    public void testScrapeAndGenerateUrlReportWithNullDocument() throws Exception {
+        TelexServiceIntegrationImpl spyService = Mockito.spy(telexServiceIntegration);
+        Mockito.doReturn(createValidTelexIntegration()).when(spyService).getTelexConfig();
 
-        when(metaAnalysisService.scrape(validUrl)).thenReturn(mockDocument);
-        when(metaAnalysisService.generateSeoReport(validUrl)).thenReturn(mockSeoReport);
-        when(metaAnalysisService.checkMetaTags(mockDocument)).thenReturn(mockMetaTagIssues);
+        TelexUserRequest request = new TelexUserRequest("https://example.com", List.of());
+        Mockito.when(metaAnalysisService.scrape("https://example.com")).thenReturn(null);
 
-        Map<String, Object> result = telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            spyService.scrapeAndGenerateUrlReport(request);
+        });
+        assertEquals("Invalid URL", exception.getMessage());
+    }
+
+    @Test
+    public void testScrapeAndGenerateUrlReportSuccess() throws Exception {
+        TelexServiceIntegrationImpl spyService = Mockito.spy(telexServiceIntegration);
+        Mockito.doReturn(createValidTelexIntegration()).when(spyService).getTelexConfig();
+
+        TelexUserRequest request = new TelexUserRequest( "https://example.com", List.of());
+
+        Document dummyDocument = Jsoup.parse("<html><head></head><body></body></html>");
+        Mockito.when(metaAnalysisService.scrape("https://example.com")).thenReturn(dummyDocument);
+        Mockito.when(metaAnalysisService.generateSeoReport("https://example.com", createValidTelexIntegration().data().settings()))
+                .thenReturn("SEO Report");
+        Mockito.when(metaAnalysisService.checkMetaTags(dummyDocument))
+                .thenReturn(List.of("Issue1", "Issue2"));
+
+        Map<String, Object> result = spyService.scrapeAndGenerateUrlReport(request);
 
         assertNotNull(result);
-        assertEquals(validUrl, result.get("url"));
-        assertEquals(mockSeoReport, result.get("seoReport"));
-        assertEquals(mockMetaTagIssues, result.get("metaTagIssues"));
+        assertEquals("https://example.com", result.get("url"));
+        assertEquals("SEO Report", result.get("seoReport"));
+        assertEquals(List.of("Issue1", "Issue2"), result.get("metaTagIssues"));
     }
-
-
 }
