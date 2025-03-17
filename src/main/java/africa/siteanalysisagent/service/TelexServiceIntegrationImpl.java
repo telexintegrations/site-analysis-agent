@@ -59,7 +59,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "type": "text",
                         "description": "provide your telex channel webhook url",
                         "required": true,
-                        "default": "https://ping.telex.im/v1/webhooks/0195a08e-3159-740b-a306-63042fa3285f"
+                        "default": ""
                     }
                 ],
                 "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
