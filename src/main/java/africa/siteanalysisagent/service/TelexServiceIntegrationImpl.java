@@ -5,19 +5,24 @@ import africa.siteanalysisagent.model.Setting;
 import africa.siteanalysisagent.model.TelexIntegration;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
     private final MetaAnalysisService metaAnalysisService;
@@ -68,19 +73,13 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
-        // Parse the JSON Telex configuration
-        TelexIntegration telexIntegration = objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-        // Ensure a valid webhook URL is present in the settings
-        String webhookUrl = telexIntegration.data().settings().stream()
-                .filter(setting -> "webhook_url".equals(setting.label()))
-                .map(Setting::settingDefault)
-                .findFirst()
-                .orElse("");
-        if (webhookUrl.isEmpty()) {
-            throw new IllegalArgumentException("Webhook URL is missing from Telex settings");
-        }
+// Force UTF-8
+        String json = new String(TELEX_CONFIG_JSON.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
 
+        TelexIntegration telexIntegration = objectMapper.readValue(json, TelexIntegration.class);
+        log.info("Telex Integration JSON Parsed Successfully on Render: {}", telexIntegration);
         return telexIntegration;
     }
 
@@ -99,6 +98,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
         // Extract webhook URL from settings
         List<Setting> settings = telexIntegration.data().settings();
+
 
         String webhookUrl = settings.stream()
                 .filter(setting -> "webhook_url".equals(setting.label()))
