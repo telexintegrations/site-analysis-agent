@@ -40,16 +40,12 @@ public class TelexServiceImpl implements TelexService {
                 .message(message)
                 .build();
 
-        Optional<String> telexwebhookopt = settings.stream()
+        String webhookUrl = settings.stream()
                 .filter(s -> "webhook_url".equals(s.label()))
-                .map(Object::toString)
-                .findFirst();
+                .map(Setting::settingDefault)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("webhook url is missing"));
 
-        if(telexwebhookopt.isEmpty()){
-            throw new IllegalArgumentException("Telex webhook url is null");
-        }
-
-        String telexwebhook = telexwebhookopt.get();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -58,7 +54,7 @@ public class TelexServiceImpl implements TelexService {
         HttpEntity<AnalysisRequest> entity = new HttpEntity<>(requestData, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(telexwebhook, entity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(webhookUrl, entity, String.class);
             log.info("Response code: {}", response.getStatusCode());
             log.info("Response: {}", response);
         } catch (Exception ex) {
