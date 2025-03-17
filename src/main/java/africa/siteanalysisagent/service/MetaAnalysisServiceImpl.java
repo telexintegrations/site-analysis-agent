@@ -22,8 +22,6 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     private static final int TIMEOUT = 10000; // 10 seconds
 
 
-
-
     @Override
     public boolean isSingleUrl(String url) {
         // validation to ensure url is not a homepage
