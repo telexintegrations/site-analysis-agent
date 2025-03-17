@@ -6,8 +6,6 @@ import africa.siteanalysisagent.model.Descriptions;
 import africa.siteanalysisagent.model.TelexIntegration;
 import africa.siteanalysisagent.service.TelexServiceIntegration;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +33,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @ExtendWith(MockitoExtension.class)
 class MetaAnalysisControllerTest {
 
-    private static final Logger log = LoggerFactory.getLogger(MetaAnalysisControllerTest.class);
     @Autowired
     private MockMvc mockMvc;
 
@@ -52,42 +49,38 @@ class MetaAnalysisControllerTest {
     @BeforeEach
     void setUp() throws IOException {
         Descriptions descriptions = new Descriptions(
-                "Test App",               // app_name
-                "Short description",      // short_description
-                "Long description",       // long_description
-                "1.0.0",                  // version
-                "John Doe"                // author
+                "Test App",
+                "Short description",
+                "Long description",
+                "1.0.0",
+                "John Doe"
         );
 
-        // ✅ Fix: Provide required arguments for TelexUserRequest
         telexUserRequest = new TelexUserRequest(
                 "Analyze this URL",
-                List.of() // Assuming settings are empty for now
+                List.of()
         );
 
-        // ✅ Mock scraping response
         scrapeResponse = Map.of(
                 "metaDescription", "Example website",
                 "title", "Example"
         );
 
-        // ✅ Properly initialize Data
         Data telexData = new Data(
-                new Data.DateInfo("2025-03-15", "2025-03-15"), // DateInfo
-                descriptions, // ✅ Fixed: Pass the initialized Descriptions object
-                true, // is_active
-                "some_type", // integration_type
-                "some_category", // integration_category
-                List.of("Feature1", "Feature2"), // key_features
-                "John Doe", // author
-                List.of(), // ✅ settings (empty list instead of null)
-                "https://api.telex.com", // target_url
-                "https://api.telex.com/tick" // tick_url
+                new Data.DateInfo("2025-03-15", "2025-03-15"),
+                descriptions,
+                true,
+                "some_type",
+                "some_category",
+                List.of("Feature1", "Feature2"),
+                "John Doe",
+                List.of(),
+                "https://api.telex.com",
+                "https://api.telex.com/tick"
         );
 
         telexIntegration = new TelexIntegration(telexData);
 
-        // ✅ Mock service responses
         given(telexServiceIntegration.scrapeAndGenerateUrlReport(ArgumentMatchers.any()))
                 .willReturn(scrapeResponse);
 
@@ -107,6 +100,17 @@ class MetaAnalysisControllerTest {
     }
 
     @Test
+    void getTelexConfiguration_Success() throws Exception {
+        given(telexServiceIntegration.getTelexConfig())
+                .willReturn(telexIntegration);
+
+        ResultActions response = mockMvc.perform(get("/api/v1/meta-analysis/telex"));
+
+        response.andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.target_url", CoreMatchers.is(telexIntegration.data().target_url())));
+    }
+
+    @Test
     void getTelexConfiguration_Failure() throws Exception {
         given(telexServiceIntegration.getTelexConfig())
                 .willThrow(new RuntimeException("Failed to fetch configuration"));
@@ -116,5 +120,4 @@ class MetaAnalysisControllerTest {
         response.andExpect(MockMvcResultMatchers.status().isInternalServerError())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.message", CoreMatchers.is("Failed to retrieve Telex configuration")));
     }
-
 }
