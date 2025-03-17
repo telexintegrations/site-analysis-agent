@@ -1,5 +1,6 @@
 package africa.siteanalysisagent.service;
 
+import africa.siteanalysisagent.model.Setting;
 import org.jsoup.nodes.Document;
 
 import java.io.IOException;
@@ -12,7 +13,7 @@ public interface MetaAnalysisService {
 
     List<String> checkMetaTags(Document document);
 
-    String generateSeoReport(String url);
+    String generateSeoReport(String url, List<Setting> settings);
 
     boolean isHomepage(String url);
 }
