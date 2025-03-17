@@ -1,6 +1,7 @@
 package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.TelexUserRequest;
+import africa.siteanalysisagent.model.Setting;
 import africa.siteanalysisagent.model.TelexIntegration;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
@@ -14,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -67,7 +69,20 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
-        return objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
+        // Parse the JSON Telex configuration
+        TelexIntegration telexIntegration = objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
+
+        // Ensure a valid webhook URL is present in the settings
+        String webhookUrl = telexIntegration.data().settings().stream()
+                .filter(setting -> "webhook_url".equals(setting.label()))
+                .map(Setting::settingDefault)
+                .findFirst()
+                .orElse("");
+        if (webhookUrl.isEmpty()) {
+            throw new IllegalArgumentException("Webhook URL is missing from Telex settings");
+        }
+
+        return telexIntegration;
     }
 
     @Override
@@ -80,14 +95,28 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             throw new IllegalArgumentException("Invalid URL");
         }
 
+        // Get Telex configuration
+        TelexIntegration telexIntegration = getTelexConfig();
+
+        // Extract webhook URL from settings
+        List<Setting> settings = telexIntegration.data().settings();
+
+        String webhookUrl = settings.stream()
+                .filter(setting -> "webhook_url".equals(setting.label()))
+                .map(Setting::settingDefault)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Webhook URL is missing from Telex settings"));
+
         try {
+
+
             Document document = metaAnalysisService.scrape(userInput);
             if (document == null) {
                 throw new IllegalArgumentException("Invalid URL");
             }
 
 
-            String seoReport = metaAnalysisService.generateSeoReport(userInput);
+            String seoReport = metaAnalysisService.generateSeoReport(userInput, settings);
 
 
             List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
