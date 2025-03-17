@@ -1,5 +1,6 @@
 package africa.siteanalysisagent.service;
 
+import africa.siteanalysisagent.model.Setting;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -72,7 +73,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     }
 
     @Override
-    public String generateSeoReport(String url) {
+    public String generateSeoReport(String url, List<Setting> settings) {
         try {
             Document document = scrape(url);
             List<String> metaTagIssues = checkMetaTags(document);
@@ -84,7 +85,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
                 metaTagIssues.forEach(issue -> report.append("- ").append(issue).append('\n'));
             }
 
-            telexService.notifyTelex(report.toString());
+            telexService.notifyTelex(report.toString(),settings);
             return report.toString();
         } catch (IOException | IllegalArgumentException e) {
             return "Failed to generate SEO report: " + e.getMessage();
