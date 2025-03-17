@@ -29,7 +29,7 @@ public class TelexServiceImpl implements TelexService {
 
 
     @Override
-    public void notifyTelex(String message, List<Setting> settings) {
+    public void notifyTelex(String message, String webhookUrl) {
 
 
 
@@ -40,11 +40,6 @@ public class TelexServiceImpl implements TelexService {
                 .message(message)
                 .build();
 
-        String webhookUrl = settings.stream()
-                .filter(s -> "webhook_url".equals(s.label()))
-                .map(Setting::settingDefault)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("webhook url is missing"));
 
 
         HttpHeaders headers = new HttpHeaders();

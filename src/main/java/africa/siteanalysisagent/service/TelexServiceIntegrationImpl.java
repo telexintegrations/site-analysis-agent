@@ -59,7 +59,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "type": "text",
                         "description": "provide your telex channel webhook url",
                         "required": true,
-                        "default": ""
+                        "default": "https://ping.telex.im/v1/webhooks/0195a08e-3159-740b-a306-63042fa3285f"
                     }
                 ],
                 "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
@@ -73,13 +73,10 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
-        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-// Force UTF-8
-        String json = new String(TELEX_CONFIG_JSON.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        // Parse Telex settings JSON
+        TelexIntegration telexIntegration = objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
 
-        TelexIntegration telexIntegration = objectMapper.readValue(json, TelexIntegration.class);
-        log.info("Telex Integration JSON Parsed Successfully on Render: {}", telexIntegration);
         return telexIntegration;
     }
 
@@ -96,11 +93,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         // Get Telex configuration
         TelexIntegration telexIntegration = getTelexConfig();
 
-        // Extract webhook URL from settings
-        List<Setting> settings = telexIntegration.data().settings();
 
-
-        String webhookUrl = settings.stream()
+        String webhookUrl = telexIntegration.data().settings().stream()
                 .filter(setting -> "webhook_url".equals(setting.label()))
                 .map(Setting::settingDefault)
                 .findFirst()
@@ -115,7 +109,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             }
 
 
-            String seoReport = metaAnalysisService.generateSeoReport(userInput, settings);
+            String seoReport = metaAnalysisService.generateSeoReport(userInput, webhookUrl);
 
 
             List<String> metaTagIssues = metaAnalysisService.checkMetaTags(document);
