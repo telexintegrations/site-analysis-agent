@@ -1,5 +1,6 @@
 package africa.siteanalysisagent.model;
 
+import africa.siteanalysisagent.dto.Setting;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
@@ -14,7 +15,7 @@ public record Data(
         List<String> key_features,
         String author,
         @JsonProperty("permissions") Map<String, Permission>permissions,
-//        List<Setting> settings,
+        List<Setting> settings,
         String target_url,
         String tick_url
 ) {
