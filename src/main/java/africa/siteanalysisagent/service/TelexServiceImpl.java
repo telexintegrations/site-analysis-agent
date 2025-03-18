@@ -1,7 +1,6 @@
 package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.AnalysisRequest;
-import africa.siteanalysisagent.model.Setting;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
