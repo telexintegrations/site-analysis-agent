@@ -53,6 +53,12 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                   " AI-powered meta suggestions"
                 ],
                 "author": "Telin",
+                "permissions": {
+                              "site_analysis_agent": {
+                                "always_online": true,
+                                "display_name": "Site Analysis Agent"
+                       }
+                            },
                 "settings": [
                     {
                         "label": "webhook_url",
@@ -97,8 +103,10 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         String webhookUrl = telexIntegration.data().settings().stream()
                 .filter(setting -> "webhook_url".equals(setting.label()))
                 .map(Setting::settingDefault)
+                .filter(url -> url != null && !url.isBlank())
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Webhook URL is missing from Telex settings"));
+
 
         try {
 
