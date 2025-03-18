@@ -22,16 +22,9 @@ import java.util.Optional;
 public class TelexServiceImpl implements TelexService {
 
     private final RestTemplate restTemplate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${telex.channel.webhook.channel.id}")
-    private String telexWebhookChannelId;
-
 
     @Override
     public void notifyTelex(String message, String webhookUrl) {
-
-
 
         AnalysisRequest requestData = AnalysisRequest.builder()
                 .event_name("web scrape")
@@ -39,8 +32,6 @@ public class TelexServiceImpl implements TelexService {
                 .status("success")
                 .message(message)
                 .build();
-
-
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
