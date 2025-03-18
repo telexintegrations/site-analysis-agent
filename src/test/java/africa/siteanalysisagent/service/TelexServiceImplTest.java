@@ -1,8 +1,6 @@
 package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.AnalysisRequest;
-import africa.siteanalysisagent.model.Setting;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -10,7 +8,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.*;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -30,73 +27,58 @@ class TelexServiceImplTest {
 
     private final String webhookUrl = "https://mock-webhook.com";
 
-    private List<Setting> settings;
 
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(telexService, "telexWebhookChannelId", webhookUrl);
-
-        settings = List.of(new Setting(
-                "webhook_url",
-                "text",
-                "Provide your Telex channel webhook URL",
-                true,
-                webhookUrl
-        ));
-    }
 
     @Test
     void testNotifyTelex_Success() {
         String message = "Test message";
-
-        ResponseEntity<String> mockResponse = new ResponseEntity<>("Success", HttpStatus.OK);
+        ResponseEntity<String> dummyResponse = new ResponseEntity<>("OK", HttpStatus.OK);
         when(restTemplate.postForEntity(eq(webhookUrl), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(mockResponse);
+                .thenReturn(dummyResponse);
 
-        ArgumentCaptor<HttpEntity<AnalysisRequest>> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        telexService.notifyTelex(message, webhookUrl);
 
-        telexService.notifyTelex(message, settings);
+        ArgumentCaptor<HttpEntity<AnalysisRequest>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate, times(1))
+                .postForEntity(eq(webhookUrl), captor.capture(), eq(String.class));
+        HttpEntity<AnalysisRequest> capturedEntity = captor.getValue();
 
-        verify(restTemplate, times(1)).postForEntity(eq(webhookUrl), requestCaptor.capture(), eq(String.class));
-
-        HttpEntity<AnalysisRequest> capturedRequest = requestCaptor.getValue();
-        AnalysisRequest requestBody = capturedRequest.getBody();
-
-        assertNotNull(requestBody);
-        assertEquals("web scrape", requestBody.getEvent_name());
-        assertEquals("site-analyzer", requestBody.getUsername());
-        assertEquals("success", requestBody.getStatus());
-        assertEquals(message, requestBody.getMessage());
-
-        HttpHeaders headers = capturedRequest.getHeaders();
-        assertNotNull(headers);
+        HttpHeaders headers = capturedEntity.getHeaders();
         assertEquals(MediaType.APPLICATION_JSON, headers.getContentType());
+        assertEquals(List.of(MediaType.APPLICATION_JSON), headers.getAccept());
+
+        AnalysisRequest requestData = capturedEntity.getBody();
+        assertNotNull(requestData);
+        assertEquals("web scrape", requestData.getEvent_name());
+        assertEquals("site-analyzer", requestData.getUsername());
+        assertEquals("success", requestData.getStatus());
+        assertEquals(message, requestData.getMessage());
     }
 
     @Test
-    void testNotifyTelex_MissingWebhookUrl() {
+    void notifyTelex_ExceptionHandled() {
         String message = "Test message";
-
-        List<Setting> invalidSettings = List.of(
-                new Setting("some_other_label", "text", "Some description", true, "")
-        );
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
-                telexService.notifyTelex(message, invalidSettings)
-        );
-
-        assertEquals("webhook url is missing", exception.getMessage());
-    }
-
-    @Test
-    void testNotifyTelex_ExceptionHandling() {
-        String message = "Test message";
-
         when(restTemplate.postForEntity(eq(webhookUrl), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(new RuntimeException("Connection error"));
+                .thenThrow(new RuntimeException("Test exception"));
 
-        assertDoesNotThrow(() -> telexService.notifyTelex(message, settings));
+        assertDoesNotThrow(() -> telexService.notifyTelex(message, webhookUrl));
 
-        verify(restTemplate, times(1)).postForEntity(eq(webhookUrl), any(HttpEntity.class), eq(String.class));
+        verify(restTemplate, times(1))
+                .postForEntity(eq(webhookUrl), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void notifyTelex_NullMessage() {
+        ResponseEntity<String> dummyResponse = new ResponseEntity<>("OK", HttpStatus.OK);
+        when(restTemplate.postForEntity(eq(webhookUrl), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(dummyResponse);
+
+        telexService.notifyTelex(null, webhookUrl);
+
+        ArgumentCaptor<HttpEntity<AnalysisRequest>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForEntity(eq(webhookUrl), captor.capture(), eq(String.class));
+        AnalysisRequest requestData = captor.getValue().getBody();
+        assertNotNull(requestData);
+        assertNull(requestData.getMessage());
     }
 }
