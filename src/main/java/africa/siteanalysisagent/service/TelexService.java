@@ -1,6 +1,5 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.model.Setting;
 
 import java.util.List;
 

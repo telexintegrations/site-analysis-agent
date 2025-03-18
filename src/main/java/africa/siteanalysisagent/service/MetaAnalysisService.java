@@ -1,6 +1,5 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.model.Setting;
 import org.jsoup.nodes.Document;
 
 import java.io.IOException;

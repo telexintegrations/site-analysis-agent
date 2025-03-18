@@ -1,6 +1,5 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.model.Setting;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;

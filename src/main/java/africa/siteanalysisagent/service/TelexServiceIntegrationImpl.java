@@ -1,11 +1,10 @@
 package africa.siteanalysisagent.service;
 
+import africa.siteanalysisagent.dto.Setting;
 import africa.siteanalysisagent.dto.TelexUserRequest;
-import africa.siteanalysisagent.model.Setting;
 import africa.siteanalysisagent.model.TelexIntegration;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,8 +63,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "label": "webhook_url",
                         "type": "text",
                         "description": "provide your telex channel webhook url",
-                        "required": true,
-                        "default": ""
+                        "default": "",
+                        "required": true
                     }
                 ],
                 "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
@@ -96,17 +95,18 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             throw new IllegalArgumentException("Invalid URL");
         }
 
-        // Get Telex configuration
-        TelexIntegration telexIntegration = getTelexConfig();
+        // Log the settings for debugging
+        log.info("Settings received: {}", telexUserRequest.settings());
 
 
-        String webhookUrl = telexIntegration.data().settings().stream()
+        String webhookUrl = telexUserRequest.settings().stream()
                 .filter(setting -> "webhook_url".equals(setting.label()))
-                .map(Setting::settingDefault)
+                .map(Setting::defaultValue)
                 .filter(url -> url != null && !url.isBlank())
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Webhook URL is missing from Telex settings"));
 
+        log.info("Webhook URL retrieved: {}", webhookUrl);
 
         try {
 
