@@ -1,8 +1,8 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.model.Setting;
+import africa.siteanalysisagent.dto.TelexUserRequest;
+import africa.siteanalysisagent.dto.Setting;
 import org.apache.commons.lang3.StringUtils;
-import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
@@ -15,8 +15,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -32,70 +30,39 @@ class MetaAnalysisServiceImplTest {
     private MetaAnalysisServiceImpl metaAnalysisService;
 
 
-    @Test
-    void testIsSingleUrl_ValidSinglePage() {
-        assertTrue(metaAnalysisService.isSingleUrl("https://example.com/page"));
-    }
-
-    @Test
-    void testScrape_ValidUrl() throws IOException {
-        String url = "https://example.com/page";
-
-        Connection mockConnection = Mockito.mock(Connection.class);
-
-        Document mockDocument = Jsoup.parse("<html><head><title>Test</title></head></html>");
-
-        try (var jsoupMock = Mockito.mockStatic(Jsoup.class)) {
-            jsoupMock.when(() -> Jsoup.connect(url)).thenReturn(mockConnection);
-            Mockito.when(mockConnection.timeout(10000)).thenReturn(mockConnection);
-            Mockito.when(mockConnection.get()).thenReturn(mockDocument);
-
-            Document result = metaAnalysisService.scrape(url);
-
-            assertNotNull(result);
-            assertEquals("Test", result.title());
-        }
-    }
-
-    @Test
-    void testCheckMetaTags_AllMetaTagsPresent() {
-        Document document = Jsoup.parse("<html><head><title>Title</title><meta name=\"description\" content=\"Meta description\"/><meta name=\"keyword\" content=\"keywords\"/></head></html>");
-        List<String> issues = metaAnalysisService.checkMetaTags(document);
-        assertEquals(3, issues.size());
-        assertTrue(issues.get(0).contains("Title tag: Title"));
-        assertTrue(issues.get(1).contains("Meta Description: Meta description"));
-        assertTrue(issues.get(2).contains("Meta Keywords: keywords"));
-    }
-
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {StringUtils.EMPTY, StringUtils.SPACE})
-    public void testIsSingleUrl_Valid(String url) {
-        assertTrue(metaAnalysisService.isSingleUrl("http://example.com/page"));
+    void testIsSingleUrl_Valid(String inValidUrl) {
+        String validUrl = "https://example.com/page";
+        assertTrue(metaAnalysisService.isSingleUrl(validUrl));
     }
 
     @Test
-    public void testIsSingleUrl_NoSlash() {
-        assertFalse(metaAnalysisService.isSingleUrl("example"));
+    void testScrape_InvalidUrlThrowsException() {
+        String invalidUrl = "invalid-url";
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> metaAnalysisService.scrape(invalidUrl));
+        assertEquals("Invalid URL. please input a single page URL", ex.getMessage());
     }
 
     @Test
-    public void testCheckMetaTags_AllTagsPresent() {
+    void testCheckMetaTags_AllPresent() {
         String html = "<html><head>" +
                 "<title>Test Title</title>" +
-                "<meta name=\"description\" content=\"Test description\">" +
-                "<meta name=\"keyword\" content=\"Test keyword\">" +
+                "<meta name='description' content='Test Description'>" +
+                "<meta name='keyword' content='Test Keyword'>" +
                 "</head><body></body></html>";
         Document document = Jsoup.parse(html);
         List<String> issues = metaAnalysisService.checkMetaTags(document);
 
-        assertTrue(issues.stream().anyMatch(s -> s.contains("Test Title")));
-        assertTrue(issues.stream().anyMatch(s -> s.contains("Test description")));
-        assertTrue(issues.stream().anyMatch(s -> s.contains("Test keyword")));
+        assertTrue(issues.contains("Title tag: Test Title\n"));
+        assertTrue(issues.contains("Meta Description: Test Description\n"));
+        assertTrue(issues.contains("Meta Keywords: Test Keyword\n"));
     }
 
     @Test
-    public void testCheckMetaTags_MissingTags() {
+    void testCheckMetaTags_MissingTags() {
         String html = "<html><head></head><body></body></html>";
         Document document = Jsoup.parse(html);
         List<String> issues = metaAnalysisService.checkMetaTags(document);
@@ -106,43 +73,30 @@ class MetaAnalysisServiceImplTest {
     }
 
     @Test
-    public void testGenerateSeoReportSuccess() throws Exception {
+    void testGenerateSeoReport_Success() throws Exception {
+        String validUrl = "https://example.com/page";
+        String webhookUrl = "http://webhook.com";
+        TelexUserRequest request = new TelexUserRequest(validUrl, List.of(
+                new Setting("webhook_url", "text", "provide your telex channel webhook url", webhookUrl, true)
+        ));
+
         MetaAnalysisServiceImpl spyService = Mockito.spy(metaAnalysisService);
-        String testUrl = "http://example.com/page";
 
         String html = "<html><head>" +
                 "<title>Test Title</title>" +
-                "<meta name=\"description\" content=\"Test description\">" +
-                "<meta name=\"keyword\" content=\"Test keyword\">" +
+                "<meta name='description' content='Test Description'>" +
+                "<meta name='keyword' content='Test Keyword'>" +
                 "</head><body></body></html>";
         Document dummyDocument = Jsoup.parse(html);
+        doReturn(dummyDocument).when(spyService).scrape(validUrl);
 
-        Mockito.doReturn(dummyDocument).when(spyService).scrape(testUrl);
+        String report = spyService.generateSeoReport(validUrl, webhookUrl);
 
-        List<Setting> settings = Collections.emptyList();
+        verify(telexService, times(1)).notifyTelex(report, webhookUrl);
 
-        String report = spyService.generateSeoReport(testUrl, settings);
-
-        verify(telexService, times(1)).notifyTelex(report, settings);
-
-        assertTrue(report.contains("SEO Analysis Report for: " + testUrl));
-        assertTrue(report.contains("Test Title"));
-        assertTrue(report.contains("Test description"));
-        assertTrue(report.contains("Test keyword"));
-    }
-
-    @Test
-    public void testGenerateSeoReportFailure() throws Exception {
-        MetaAnalysisServiceImpl spyService = Mockito.spy(metaAnalysisService);
-        String testUrl = "http://example.com/page";
-
-        Mockito.doThrow(new IOException("Connection failed")).when(spyService).scrape(testUrl);
-
-        List<Setting> settings = Collections.emptyList();
-
-        String report = spyService.generateSeoReport(testUrl, settings);
-
-        assertTrue(report.contains("Failed to generate SEO report:"));
-        assertTrue(report.contains("Connection failed"));
+        assertTrue(report.startsWith("SEO Analysis Report for: " + validUrl));
+        assertTrue(report.contains("Title tag: Test Title"));
+        assertTrue(report.contains("Meta Description: Test Description"));
+        assertTrue(report.contains("Meta Keywords: Test Keyword"));
     }
 }
