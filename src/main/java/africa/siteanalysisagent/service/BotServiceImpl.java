@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class BotService {
+public class BotServiceImpl implements BotService {
 
     private final TelexService telexService;
     private final MetaAnalysisService metaAnalysisService;
