@@ -71,7 +71,6 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             }
             """;
 
-
     @Override
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
