@@ -90,7 +90,7 @@ class MetaAnalysisServiceImplTest {
         Document dummyDocument = Jsoup.parse(html);
         doReturn(dummyDocument).when(spyService).scrape(validUrl);
 
-        String report = spyService.generateSeoReport(validUrl, webhookUrl);
+        String report = spyService.generateSeoReport(validUrl, webhookUrl, String.valueOf(request));
 
         verify(telexService, times(1)).notifyTelex(report, webhookUrl);
 
