@@ -16,9 +16,9 @@ import java.util.*;
 @RequiredArgsConstructor
 public class TelexServiceImpl implements TelexService {
 
-    private RestTemplate restTemplate;
+    private final RestTemplate restTemplate;
 
-    public TelexServiceImpl(){
+    public TelexServiceImpl() {
         this.restTemplate = createRestTemplate();
     }
 
