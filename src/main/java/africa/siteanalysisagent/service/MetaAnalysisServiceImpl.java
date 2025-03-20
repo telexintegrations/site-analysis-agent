@@ -70,7 +70,7 @@ public class MetaAnalysisServiceImpl implements MetaAnalysisService {
     }
 
     @Override
-    public String generateSeoReport(String url, String webhookurl) {
+    public String generateSeoReport(String url,String scanId, String webhookurl) {
         try {
             Document document = scrape(url);
             List<String> metaTagIssues = checkMetaTags(document);
