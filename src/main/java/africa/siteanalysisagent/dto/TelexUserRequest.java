@@ -6,14 +6,18 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 public record TelexUserRequest(
-        String message,
+        String text,
+        String channelId,
         List<Setting> settings) {
     @JsonCreator
     public TelexUserRequest(
-            @JsonProperty("message") String message,
+            @JsonProperty("text") String text,
+            @JsonProperty("channelId") String channelId,
             @JsonProperty("settings") List<Setting> settings
     ) {
-        this.message = message;
+        this.text = text;
+        this.channelId = (channelId != null && !channelId.isBlank()) ? channelId : "default-channel-id";
         this.settings = settings != null ? settings : List.of(); // Ensure settings is never null
     }
+
 }
