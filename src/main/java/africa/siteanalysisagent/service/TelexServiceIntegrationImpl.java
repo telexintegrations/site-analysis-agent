@@ -31,6 +31,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
     private static final Pattern URL_PATTERN = Pattern.compile("^(https?://)[a-zA-Z0-9]+(.[a-zA-Z0-9]+)+(:[0-9]+)?(/[a-zA-Z0-9-._~:/?#\\[\\]@!$&'()*+,;=]*)?$");
 
+
     private static final String TELEX_CONFIG_JSON = """
             {
               "data": {
@@ -74,7 +75,9 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/webhook"
                 }
             }
-            """;
+            """:
+              
+    private static final String TELEX_CONFIG_JSON = "integration.json";
 
 
     @Override
