@@ -21,3 +21,4 @@ public class TelexWebSocketConfig implements WebSocketConfigurer {
         telexWebSocketClient.connect();
     }
 }
+
