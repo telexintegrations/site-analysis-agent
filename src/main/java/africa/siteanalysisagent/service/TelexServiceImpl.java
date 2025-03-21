@@ -11,8 +11,8 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
-@Slf4j
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TelexServiceImpl implements TelexService {
 
