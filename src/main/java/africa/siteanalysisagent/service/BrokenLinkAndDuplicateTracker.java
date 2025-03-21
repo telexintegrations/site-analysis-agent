@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-@Slf4j
 @Component
+@Slf4j
 public class BrokenLinkAndDuplicateTracker {
 
     private final Map<String, List<String>> brokenLinksScan = new ConcurrentHashMap<>();
