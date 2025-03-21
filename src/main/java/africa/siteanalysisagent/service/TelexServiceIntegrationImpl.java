@@ -77,8 +77,6 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             }
             """;
               
-    private static final String TELEX_CONFIG_JSON = "integration.json";
-
 
     @Override
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
