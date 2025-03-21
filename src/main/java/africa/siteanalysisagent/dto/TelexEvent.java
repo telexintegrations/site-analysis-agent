@@ -5,7 +5,16 @@ public class TelexEvent {
     private String userId; // ID of the user who triggered the event
     private String text; // Message text or button value
     private String action; // Action ID (for button clicks)
-    private String webhookUrl; // Channel or DM ID where the event occurred
+    private String channelId; // Channel or DM ID where the event occurred
+    private String threadId; // Add thread ID field
+
+    public String getThreadId() {
+        return threadId;
+    }
+
+    public void setThreadId(String threadId) {
+        this.threadId = threadId;
+    }
 
     public String getType() {
         return type;
@@ -39,12 +48,12 @@ public class TelexEvent {
         this.action = action;
     }
 
-    public String getWebhookUrl() {
-        return webhookUrl;
+    public String getChannelId() {
+        return channelId;
     }
 
-    public void setWebhookUrl(String webhookUrl) {
-        this.webhookUrl = webhookUrl;
+    public void setChannelId(String channelId) {
+        this.channelId = channelId;
     }
 
     @Override
@@ -54,7 +63,8 @@ public class TelexEvent {
                 ", userId='" + userId + '\'' +
                 ", text='" + text + '\'' +
                 ", action='" + action + '\'' +
-                ", channelId='" + webhookUrl + '\'' +
+                ", channelId='" + channelId + '\'' +
                 '}';
     }
 }
+
