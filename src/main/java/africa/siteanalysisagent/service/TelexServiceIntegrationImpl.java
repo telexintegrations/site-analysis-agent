@@ -75,7 +75,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/webhook"
                 }
             }
-            """:
+            """;
               
     private static final String TELEX_CONFIG_JSON = "integration.json";
 
