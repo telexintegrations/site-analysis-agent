@@ -22,63 +22,40 @@ public class TelexServiceImpl implements TelexService {
         this.restTemplate = createRestTemplate();
     }
 
-    private RestTemplate createRestTemplate(){
+    private RestTemplate createRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(50000); // 20 seconds
-        factory.setReadTimeout(100000); // 20 seconds
+        factory.setConnectTimeout(50000);
+        factory.setReadTimeout(100000);
         return new RestTemplate(factory);
     }
 
-
-
     @Override
     public void sendMessage(String channelId, String message) {
-        notifyTelex(message, channelId); // Assuming channelId is the webhook URL
-    }
-
-    @Override
-    public void sendInteractiveMessage(String webhookUrl, String message, List<Button> buttons) {
-        if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.error("Cannot send message: channel_id is missing.");
-            return;
-        }
-
-        Map<String, Object> payload = createPayload(message, buttons);
-        sendPayloadToTelex(webhookUrl, payload);
-    }
-
-    @Override
-    public void notifyTelex(String message, String webhookUrl) {
-        AnalysisRequest requestData = AnalysisRequest.builder()
-                .event_name("web scrape")
-                .username("site-analyzer")
-                .status("success")
-                .message(message)
-                .build();
-
-        HttpHeaders headers = createHeaders();
-        HttpEntity<AnalysisRequest> entity = new HttpEntity<>(requestData, headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(webhookUrl, entity, String.class);
-            log.info("Response code: {}", response.getStatusCode());
-            log.info("Response: {}", response);
-        } catch (Exception ex) {
-            log.error("Error notifying telex: {}", ex.getMessage());
-        }
-    }
-
-    private Map<String, Object> createPayload(String message, List<Button> buttons) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event_name", "web_scraper");
         payload.put("username", "site-analyzer");
         payload.put("status", "success");
         payload.put("message", message);
-        payload.put("buttons", formatButtons(buttons));
-        return payload;
+        payload.put("channel_id", channelId);
+
+        sendToTelex(payload,channelId);
     }
 
-    private List<Map<String, String>> formatButtons(List<Button> buttons) {
+    @Override
+    public void sendInteractiveMessage(String channelId, String message, List<Button> buttons) {
+        if (channelId == null || channelId.isEmpty()) {
+            log.error("Cannot send message: channel_id is missing.");
+            return;
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event_name", "web_scraper");
+        payload.put("username", "site-analyzer");
+        payload.put("status", "success");
+        payload.put("message", message);
+        payload.put("channel_id", channelId);
+
+        // Properly format buttons
         List<Map<String, String>> buttonList = new ArrayList<>();
         for (Button button : buttons) {
             Map<String, String> btn = new HashMap<>();
@@ -86,26 +63,45 @@ public class TelexServiceImpl implements TelexService {
             btn.put("value", button.getValue());
             buttonList.add(btn);
         }
-        return buttonList;
+        payload.put("buttons", buttonList);
+
+        sendToTelex(payload, channelId);
     }
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-        return headers;
-    }
-
-    private void sendPayloadToTelex(String webhookUrl, Map<String, Object> payload) {
-        HttpHeaders headers = createHeaders();
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-        log.info("Sending payload to Telex: {}", payload);
-
+    @Override
+    public void notifyTelex(String message, String channelId) {
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(webhookUrl, entity, String.class);
-            log.info("Telex Response: Status code = {}, Body = {}", response.getStatusCode(), response.getBody());
-        } catch (Exception ex) {
-            log.error("Failed to send Telex notification: {}", ex.getMessage());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("event_name", "web_scrape");
+            payload.put("username", "site-analyzer");
+            payload.put("status", "success");
+            payload.put("message", message);  // Fixed typo from "massage" to "message"
+            payload.put("channel_id", channelId);
+
+            sendToTelex(payload, channelId);
+        } catch (Exception e) {
+            log.error("Failed to send Telex notification: {}", e.getMessage(), e);
+        }
+    }
+
+    private void sendToTelex(Map<String, Object> payload, String channelId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("accept", "application/json");
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
+            log.info("📤 Sending message to Telex: {}", payload);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(channelId, entity, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("✅ Telex Response: {}", response.getBody());
+            } else {
+                log.error("❌ Telex API Error: Status = {}, Response = {}", response.getStatusCode(), response.getBody());
+            }
+        } catch (Exception e) {
+            log.error("❌ Failed to send message to Telex: {}", e.getMessage(), e);
         }
     }
 }
