@@ -14,7 +14,7 @@ public class ProgressTrackerImpl implements ProgressTracker{
 
     private final SimpMessagingTemplate messagingTemplate;
 
-    private TelexService telexService;
+    private final TelexService telexService;
 
     public void sendProgress(String scanId,String channelId, int progress, String message){
 
