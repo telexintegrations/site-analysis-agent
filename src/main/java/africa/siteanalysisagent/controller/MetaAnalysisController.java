@@ -33,22 +33,23 @@ public class MetaAnalysisController {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
     }
 
-    @PostMapping("/webhook")
-    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
+//    @PostMapping("/webhook")
+//    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
+//
+//        String text = payload.get("text");
+//        String channelId = payload.get("channel_id"); // Extract channel ID
+//
+//
+//        if (text != null) {
+//            TelexUserRequest telex = new TelexUserRequest(text, channelId, List.of());
+//            telex.text();
+//            telex.channelId(); // Ensure channelId is never null
+//            botService.handleEvent(telex);
+//        }
+//        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
+//        return ResponseEntity.ok().build();
+//    }
 
-        String text = payload.get("text");
-        String channelId = payload.get("channel_id"); // Extract channel ID
-
-
-        if (text != null) {
-            TelexUserRequest telex = new TelexUserRequest(text, channelId, List.of());
-            telex.text();
-            telex.channelId(); // Ensure channelId is never null
-            botService.handleEvent(telex);
-        }
-        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
-        return ResponseEntity.ok().build();
-    }
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
