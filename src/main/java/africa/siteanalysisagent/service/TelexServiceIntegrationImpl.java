@@ -77,6 +77,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             """;
               
 
+
     @Override
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
@@ -96,48 +97,30 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         log.info("📩 Processing URL '{}' from Channel '{}'", userInput, channelId);
 
 
+        if (isValidUrl(userInput)) {
+            userUrls.put(channelId, userInput);
+            log.info("✅ Stored URL '{}' for channel '{}'", userInput, channelId);
+        }
         // Log the settings for debugging
         log.info("Settings received: {}", telexUserRequest.settings());
 
+//
+//        String webhookUrl = telexUserRequest.settings().stream()
+//                .filter(setting -> "webhook_url".equals(setting.label()))
+//                .map(Setting::defaultValue)
+//                .filter(url -> url != null && !url.isBlank())
+//                .findFirst()
+//                .orElse("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4");
 
-        String webhookUrl = telexUserRequest.settings().stream()
-                .filter(setting -> "webhook_url".equals(setting.label()))
-                .map(Setting::defaultValue)
-                .filter(url -> url != null && !url.isBlank())
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("webhook not found"));
-
-        log.info("Webhook URL retrieved: {}", webhookUrl);
+//        log.info("Webhook URL retrieved: {}", webhookUrl);
 
         log.info("📩 Received message: '{}' from '{}'", userInput, channelId);
 
-        if (userInput.equalsIgnoreCase("start")) {
-            botService.handleEvent(new TelexUserRequest("start", channelId, null));
-            return Map.of("message", "Welcome! Would you like to scan your URL? (yes/no)");
-        }
+        // Delegate all user commands to the BotService
+        botService.handleEvent(telexUserRequest);
 
-        if (userInput.equalsIgnoreCase("yes")) {
-            botService.handleEvent(new TelexUserRequest("yes", channelId, null));
-            return Map.of("message", "Please enter the URL you want to scan.");
-        }
-
-        if (userInput.equalsIgnoreCase("no")) {
-            botService.handleEvent(new TelexUserRequest("no", channelId, null));
-            return Map.of("message", "Okay! Let me know if you need anything else.");
-        }
-
-        if (isValidUrl(userInput)) {
-            userUrls.put(channelId, userInput);
-            botService.handleEvent(new TelexUserRequest("url_stored", channelId, null));
-            return Map.of("message", "You entered: " + userInput + ". Type 'confirm' to start scanning.");
-        }
-
-        if (userInput.equalsIgnoreCase("confirm")) {
-            return processConfirmedScan(channelId);
-        }
-
-        botService.handleEvent(new TelexUserRequest("invalid_input", channelId, null));
-        return Map.of("message", "❌ I didn't understand that. Please type 'start' to begin.");
+        // Return a response indicating the command was forwarded
+        return Map.of("message", "Command forwarded to bot service");
     }
 
     private Map<String, Object> processConfirmedScan(String channelId) {
@@ -150,12 +133,12 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         log.info("📡 Scanning confirmed for '{}'", urlToScan);
 
         try {
-            String seoReport = metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+             metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
             userUrls.remove(channelId);
 
             return Map.of(
                     "url", urlToScan,
-                    "seoReport", seoReport,
+//                    "seoReport", seoReport,
                     "status", "success"
             );
         } catch (Exception e) {

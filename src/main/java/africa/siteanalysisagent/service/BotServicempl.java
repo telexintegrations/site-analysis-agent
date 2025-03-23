@@ -6,12 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Slf4j
@@ -20,8 +19,10 @@ public class BotServicempl implements BotService {
 
     private final TelexService telexService;
     private final MetaAnalysisService metaAnalysisService;
-
     private final Map<String, String> userUrls = new HashMap<>();
+    private final Map<String, String> pendingOptimizations = new HashMap<>();
+    private final Map<String, String> userStates = new HashMap<>(); // Tracks user states
+
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
@@ -29,6 +30,12 @@ public class BotServicempl implements BotService {
         String channelId = userRequest.channelId();
 
         log.info("📩 Received message: '{}' from '{}'", text, channelId);
+
+        // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
+        if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
+            handleFixConfirmation(channelId, text);
+            return;
+        }
 
         if (text.equalsIgnoreCase("start")) {
             telexService.sendMessage(channelId, "👋 Hello! Would you like to scan a URL?\n👉 Type 'yes' to continue or 'no' to cancel.");
@@ -45,9 +52,9 @@ public class BotServicempl implements BotService {
             return;
         }
 
-        if (isValidUrl(text)) {
-            userUrls.put(channelId, text);
-            telexService.sendMessage(channelId, "🔗 You entered: " + text + "\n👉 Type 'confirm' to start scanning or 'cancel' to enter a new URL.");
+        if (text.equalsIgnoreCase("cancel")) {
+            userUrls.remove(channelId);
+            telexService.sendMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
             return;
         }
 
@@ -57,19 +64,97 @@ public class BotServicempl implements BotService {
                 return;
             }
 
+            if (userStates.get(channelId) != null && userStates.get(channelId).equals("scanning")) {
+                telexService.sendMessage(channelId, "⚠️ A scan is already in progress! Please wait...");
+                return;
+            }
+            // Set state to "scanning"
+            userStates.put(channelId, "scanning");
+
             String urlToScan = userUrls.get(channelId);
             telexService.sendMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
 
+            // Perform the scan
+            String scanId = UUID.randomUUID().toString();
+            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+
+            // Notify the user that the scan is complete
+
+            // Store AI optimizations for potential application//            telexService.sendMessage(channelId, "✅ Scan complete! Here's your report:\n\n" + seoReport);
+//            pendingOptimizations.put(channelId, seoReport);
+
+            // Set user state to wait for fix confirmation
+            userStates.put(channelId, "awaiting_fix_confirmation");
+
+//            telexService.sendMessage(channelId, seoReport);
+
+//            // Prompt user to apply fixes
+//            sendFixPrompt(channelId);
+
+            // Clear the URL state after the scan
             userUrls.remove(channelId);
             return;
         }
 
-        if (text.equalsIgnoreCase("cancel")) {
-            userUrls.remove(channelId);
-            telexService.sendMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
+        if (text.equalsIgnoreCase("apply_fixes")) {
+            handleFixConfirmation(channelId, text);
             return;
         }
 
+        if (text.equalsIgnoreCase("ignore")) {
+            handleFixConfirmation(channelId, text);
+            return;
+        }
+
+        if (isValidUrl(text)) {
+            userUrls.put(channelId, text);
+            userStates.put(channelId, "waiting_for_confirmation");
+            telexService.sendMessage(channelId, "🔗 You entered: " + text + "\n👉 Type 'confirm' to start scanning or 'cancel' to enter a new URL.");
+            return;
+        }
+
+        telexService.sendMessage(channelId, "❌ Invalid command or URL. Please type 'start' to begin.");
+    }
+
+    private void handleFixConfirmation(String channelId, String userInput) {
+        if (userInput.equalsIgnoreCase("apply_fixes")) {
+            // Retrieve the optimized meta tags for this channel
+            String optimizedMetags = metaAnalysisService.getOptimizedMetags(channelId);
+            log.info("Retrieved optimized meta tags for channel {}: {}", channelId, optimizedMetags);
+
+            // Send the optimized meta tags to the user
+            telexService.sendMessage(channelId, "🤖 **Optimized Meta Tags:**\n" + optimizedMetags);
+
+
+
+            userStates.remove(channelId); // Reset user state
+        } else if (userInput.equalsIgnoreCase("ignore")) {
+            telexService.sendMessage(channelId, "✅ AI fixes ignored. Let me know if you need further assistance.");
+            metaAnalysisService.clearOptimizedMetags(channelId); // Clear optimizations
+            userStates.remove(channelId); // Reset user state
+        } else {
+            telexService.sendMessage(channelId, "❌ Invalid input. Please type `apply_fixes` or `ignore`.");
+        }
+    }
+
+    private void applyOptimizedMetaTags(String channelId) {
+        if (pendingOptimizations.containsKey(channelId)) {
+            String optimizedTags = pendingOptimizations.remove(channelId);
+            telexService.sendMessage(channelId, "✅ AI-optimized meta tags have been applied successfully!\n\n" + optimizedTags);
+        } else {
+            telexService.sendMessage(channelId, "⚠️ No AI-optimized meta tags found! Please run a scan first.");
+        }
+    }
+
+    private void sendFixPrompt(String channelId) {
+        try {
+//            telexService.sendInteractiveMessage(channelId,
+//                    "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip.",
+//                    List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore")));
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to send interactive message. Sending plain text as fallback.");
+            telexService.sendMessage(channelId, "Would you like to apply AI-optimized fixes? Type `apply_fixes` to apply or `ignore` to skip.");
+        }
     }
 
     private boolean isValidUrl(String text) {
@@ -92,5 +177,4 @@ public class BotServicempl implements BotService {
         String message = "Goodbye! Let me know if you want help later.";
         telexService.sendMessage(channelId, message);
     }
-
 }

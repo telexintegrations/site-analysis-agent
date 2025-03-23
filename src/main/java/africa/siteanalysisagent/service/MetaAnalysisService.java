@@ -1,12 +1,11 @@
 package africa.siteanalysisagent.service;
 
-import org.jsoup.nodes.Document;
-
-import java.io.IOException;
-import java.util.List;
-
 public interface MetaAnalysisService {
-//    boolean isSingleUrl (String url);
+    boolean isSingleUrl (String url);
 
-    String generateSeoReport(String url,String scanId, String channelId);
+    void generateSeoReport(String url, String scanId, String channelId);
+
+    String getOptimizedMetags(String channelId);
+
+    void clearOptimizedMetags(String channelId);
 }
