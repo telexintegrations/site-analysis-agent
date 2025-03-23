@@ -1,22 +1,26 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.dto.AnalysisRequest;
 import africa.siteanalysisagent.dto.Button;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
-@Service
 @Slf4j
+@Service
 @RequiredArgsConstructor
+@EnableAsync // Enable asynchronous execution
 public class TelexServiceImpl implements TelexService {
 
     private final RestTemplate restTemplate;
+    private static final String TELEX_WEBHOOK_URL = "https://ping.telex.im/v1/webhooks/01958e7d-78cd-73d4-a9e3-ee05c7a0aab0"; // Update with your actual webhook ID
 
     public TelexServiceImpl() {
         this.restTemplate = createRestTemplate();
@@ -24,13 +28,24 @@ public class TelexServiceImpl implements TelexService {
 
     private RestTemplate createRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(50000);
-        factory.setReadTimeout(100000);
+        factory.setConnectTimeout(150000);
+        factory.setReadTimeout(150000);
         return new RestTemplate(factory);
     }
 
     @Override
-    public void sendMessage(String channelId, String message) {
+    @Async // Mark this method as asynchronous
+    public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message) {
+        if (channelId == null || channelId.isEmpty()) {
+            log.error("❌ Channel ID is not provided.");
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Channel ID is not provided."));
+        }
+
+        if (message == null || message.isEmpty()) {
+            log.error("❌ Message is empty.");
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Message is empty."));
+        }
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event_name", "web_scraper");
         payload.put("username", "site-analyzer");
@@ -38,14 +53,22 @@ public class TelexServiceImpl implements TelexService {
         payload.put("message", message);
         payload.put("channel_id", channelId);
 
-        sendToTelex(payload,channelId);
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Thread.sleep(1000); // 1-second delay between messages to avoid rate limits
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return sendToTelex(payload);
+        });
     }
 
     @Override
-    public void sendInteractiveMessage(String channelId, String message, List<Button> buttons) {
+    @Async // Mark this method as asynchronous
+    public CompletableFuture<ResponseEntity<String>> sendInteractiveMessage(String channelId, String message, List<Button> buttons) {
         if (channelId == null || channelId.isEmpty()) {
             log.error("Cannot send message: channel_id is missing.");
-            return;
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Channel ID is missing."));
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -65,43 +88,59 @@ public class TelexServiceImpl implements TelexService {
         }
         payload.put("buttons", buttonList);
 
-        sendToTelex(payload, channelId);
+        return CompletableFuture.supplyAsync(() -> sendToTelex(payload));
     }
 
     @Override
-    public void notifyTelex(String message, String channelId) {
+    @Async // Mark this method as asynchronous
+    public CompletableFuture<ResponseEntity<String>> notifyTelex(String message, String channelId) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("event_name", "web_scrape");
             payload.put("username", "site-analyzer");
             payload.put("status", "success");
-            payload.put("message", message);  // Fixed typo from "massage" to "message"
+            payload.put("message", message);
             payload.put("channel_id", channelId);
 
-            sendToTelex(payload, channelId);
+            return CompletableFuture.supplyAsync(() -> sendToTelex(payload));
         } catch (Exception e) {
             log.error("Failed to send Telex notification: {}", e.getMessage(), e);
+            return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to send Telex notification."));
         }
     }
 
-    private void sendToTelex(Map<String, Object> payload, String channelId) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("accept", "application/json");
+    private ResponseEntity<String> sendToTelex(Map<String, Object> payload) {
+        int maxRetries = 3; // Retry up to 3 times
+        int retryDelay = 1000; // Start with 1-second delay
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-            log.info("📤 Sending message to Telex: {}", payload);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.set("accept", "application/json");
 
-            ResponseEntity<String> response = restTemplate.postForEntity(channelId, entity, String.class);
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
+                log.info("📤 Sending message to Telex (attempt {}): {}", attempt, payload);
 
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ Telex Response: {}", response.getBody());
-            } else {
-                log.error("❌ Telex API Error: Status = {}, Response = {}", response.getStatusCode(), response.getBody());
+                ResponseEntity<String> response = restTemplate.postForEntity(TELEX_WEBHOOK_URL, entity, String.class);
+
+                if (response.getStatusCode().is2xxSuccessful()) {
+                    log.info("✅ Message sent successfully: {}", response.getBody());
+                    return response; // Success, return response
+                } else if (response.getStatusCode().value() == 429) {
+                    log.warn("⚠️ 429 Too Many Requests - Retrying in {}ms...", retryDelay);
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 2; // Exponential backoff
+                } else {
+                    log.error("❌ Telex API Error: {}", response.getBody());
+                    return response;
+                }
+
+            } catch (Exception e) {
+                log.error("❌ Failed to send message to Telex: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            log.error("❌ Failed to send message to Telex: {}", e.getMessage(), e);
         }
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("Failed after multiple retries");
     }
 }
