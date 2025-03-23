@@ -5,13 +5,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class GptConfig {
+public class GeminiConfig {
 
-    @Value("${gpt.api.key}")
+    @Value("${gemini.api.key}")
     private String apiKey;
 
     @Bean
-    public String gptApiKey() {
+    public String geminiApiKey() {
         return apiKey;
     }
 }
