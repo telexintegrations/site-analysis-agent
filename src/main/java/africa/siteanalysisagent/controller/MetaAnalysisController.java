@@ -34,19 +34,12 @@ public class MetaAnalysisController {
 //    }
 
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
-
-        String text = payload.get("text");
-        String channelId = payload.get("channel_id"); // Extract channel ID
-
-
-        if (text != null) {
-            TelexUserRequest telex = new TelexUserRequest(text, channelId, List.of());
-            telex.text();
-            telex.channelId(); // Ensure channelId is never null
-            botService.handleEvent(telex);
+    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
+        if (request.text() != null) {
+            botService.handleEvent(request);  // Pass the validated request directly
         }
-        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
+
+        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
         return ResponseEntity.ok().build();
     }
 
