@@ -93,12 +93,6 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     @Override
     public Map<String, Object> scrapeAndGenerateUrlReport(TelexUserRequest telexUserRequest) throws IOException {
 
-        try {
-            log.info("📩 Raw Telex Request Payload: {}", new ObjectMapper().writeValueAsString(telexUserRequest));
-        } catch (JsonProcessingException e) {
-            log.error("❌ Failed to serialize TelexUserRequest: {}", e.getMessage());
-        }
-
         // Check if text is null
         if (telexUserRequest.text() == null) {
             log.error("❌ `text()` is NULL! Check Telex API payload format.");

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/v1/meta-analysis")
@@ -28,21 +29,19 @@ public class MetaAnalysisController {
     private final BotService botService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-
-        try {
-            log.info("Received request from channel {}: {}", telexUserRequest.channelId(), telexUserRequest.text());
-
-            // Process the request asynchronously
-            telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
-
-            // Return just an acknowledgment
-            return ResponseEntity.ok().build();
-
-        } catch (Exception e) {
-            log.error("Error processing request", e);
-            return ResponseEntity.internalServerError().body("Error processing request");
+    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) {
+        // Immediately reject empty messages or default channel IDs
+        if (request.text() == null || request.text().isBlank() ||
+                "default-channel-id".equals(request.channelId())) {
+            log.warn("Rejected invalid request - Empty: {}, Default Channel: {}",
+                    request.text() == null,
+                    "default-channel-id".equals(request.channelId()));
+            return ResponseEntity.badRequest().build();
         }
+
+        // Process valid requests asynchronously
+        CompletableFuture.runAsync(() -> botService.handleEvent(request));
+        return ResponseEntity.ok().build();
     }
 
 //    @PostMapping("/webhook")
