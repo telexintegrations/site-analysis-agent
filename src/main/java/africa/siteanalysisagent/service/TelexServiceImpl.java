@@ -127,17 +127,28 @@ public class TelexServiceImpl implements TelexService {
                 .map(Setting::defaultValue)
                 .filter(url -> url != null && !url.isBlank())
                 .findFirst()
-                .orElse("https://ping.telex.im/v1/webhooks/01958e7d-78cd-73d4-a9e3-ee05c7a0aab0");
+                .orElse(null); // Don't fall back to hardcoded URL
 
         if (webhookUrl != null) {
+            // Validate URL format
+            if (!webhookUrl.startsWith("http")) {
+                log.error("❌ Invalid webhook URL format for channel {}: {}", channelId, webhookUrl);
+                return;
+            }
             webhookCache.put(channelId, webhookUrl);
             log.info("✅ Updated webhook URL for channel '{}': {}", channelId, webhookUrl);
         } else {
-            log.warn("⚠️ No webhook URL provided in settings for channel '{}'.", channelId);
+            log.error("❌ No valid webhook URL found in settings for channel {}", channelId);
         }
     }
 
     private ResponseEntity<String> sendToTelex(String webhookUrl,Map<String, Object> payload) {
+
+        // Validate URL first
+        if (webhookUrl == null || !webhookUrl.startsWith("http")) {
+            log.error("❌ Invalid webhook URL: {}", webhookUrl);
+            return ResponseEntity.badRequest().body("Invalid webhook URL configuration");
+        }
         int maxRetries = 3; // Retry up to 3 times
         int retryDelay = 1000; // Start with 1-second delay
 
