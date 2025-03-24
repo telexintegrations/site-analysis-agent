@@ -26,7 +26,6 @@ public class BotServicempl implements BotService {
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
-
         String text = userRequest.text().trim();
         String channelId = userRequest.channelId();
 
