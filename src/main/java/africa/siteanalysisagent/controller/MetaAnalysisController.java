@@ -29,25 +29,49 @@ public class MetaAnalysisController {
 
     @PostMapping("/scrape")
     public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> rawRequest) throws IOException {
-        log.info("📩 Raw Telex Payload: {}", rawRequest); // Log full request for debugging
+        log.info("📩 Raw Telex Payload: {}", rawRequest);
 
-        // Extract values safely
-        String text = (String) rawRequest.getOrDefault("text", "").toString();
-        String channelId = (String) rawRequest.getOrDefault("channelId", "default-channel-id");
+        // Extract text from potential nested structures
+        String text = extractTextFromPayload(rawRequest);
+        String channelId = extractChannelIdFromPayload(rawRequest);
 
         if (text == null || text.isBlank()) {
-            log.warn("⚠️ Empty text received from Telex. Ignoring request.");
+            log.warn("⚠️ Empty text received from Telex. Payload: {}", rawRequest);
             return ResponseEntity.badRequest().build();
         }
 
         TelexUserRequest request = new TelexUserRequest(text, channelId, List.of());
-
         botService.handleEvent(request);
-        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
-
         return ResponseEntity.ok().build();
     }
 
+    private String extractTextFromPayload(Map<String, Object> payload) {
+        // Case 1: Direct text field
+        if (payload.containsKey("text")) {
+            return payload.get("text").toString();
+        }
+        // Case 2: Nested in message object
+        if (payload.containsKey("message") && ((Map<?,?>)payload.get("message")).containsKey("text")) {
+            return ((Map<?, ?>) payload.get("message")).get("text").toString();
+        }
+        // Case 3: Array format
+        if (payload.containsKey("text_array")) {
+            List<?> textArray = (List<?>) payload.get("text_array");
+            return textArray.isEmpty() ? null : textArray.get(0).toString();
+        }
+        return null;
+    }
+
+    private String extractChannelIdFromPayload(Map<String, Object> payload) {
+        // Try common channel ID field names
+        if (payload.containsKey("channel_id")) {
+            return payload.get("channel_id").toString();
+        }
+        if (payload.containsKey("channelId")) {
+            return payload.get("channelId").toString();
+        }
+        return "default-channel-id";
+    }
 
 //    @PostMapping("/webhook")
 //    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {

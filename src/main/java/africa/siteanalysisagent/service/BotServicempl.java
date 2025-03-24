@@ -29,9 +29,9 @@ public class BotServicempl implements BotService {
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        if (text.equals("[No text]")) {
-            log.warn("⚠️ Received empty or invalid message from Telex, ignoring...");
-            return;  // Stop processing
+        if (userRequest.text() == null || userRequest.text().isBlank()) {
+            log.warn("⚠️ Received empty message from channel {}", userRequest.channelId());
+            return;
         }
 
         log.info("📩 Received message: '{}' from '{}'", text, channelId);
