@@ -1,6 +1,7 @@
 package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.Button;
+import africa.siteanalysisagent.dto.Setting;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -20,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 public class TelexServiceImpl implements TelexService {
 
     private final RestTemplate restTemplate;
-    private static final String TELEX_WEBHOOK_URL = "https://ping.telex.im/v1/webhooks/01958e7d-78cd-73d4-a9e3-ee05c7a0aab0"; // Update with your actual webhook ID
+    private final Map<String, String> webhookCache = new HashMap<>(); // Cache webhook URLs per channel
 
     public TelexServiceImpl() {
         this.restTemplate = createRestTemplate();
@@ -36,9 +37,11 @@ public class TelexServiceImpl implements TelexService {
     @Override
     @Async // Mark this method as asynchronous
     public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message) {
-        if (channelId == null || channelId.isEmpty()) {
-            log.error("❌ Channel ID is not provided.");
-            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Channel ID is not provided."));
+        String webhookUrl = getWebhookUrl(channelId);
+
+        if (webhookUrl == null) {
+            log.error("❌ No webhook URL found for channel '{}'.", channelId);
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
         }
 
         if (message == null || message.isEmpty()) {
@@ -59,17 +62,20 @@ public class TelexServiceImpl implements TelexService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return sendToTelex(payload);
+            return sendToTelex(webhookUrl,payload);
         });
     }
 
     @Override
     @Async // Mark this method as asynchronous
     public CompletableFuture<ResponseEntity<String>> sendInteractiveMessage(String channelId, String message, List<Button> buttons) {
-        if (channelId == null || channelId.isEmpty()) {
-            log.error("Cannot send message: channel_id is missing.");
-            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Channel ID is missing."));
+        String webhookUrl = getWebhookUrl(channelId);
+
+        if (webhookUrl == null) {
+            log.error("❌ No webhook URL found for channel '{}'.", channelId);
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
         }
+
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event_name", "web_scraper");
@@ -88,13 +94,19 @@ public class TelexServiceImpl implements TelexService {
         }
         payload.put("buttons", buttonList);
 
-        return CompletableFuture.supplyAsync(() -> sendToTelex(payload));
+        return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl,payload));
     }
 
     @Override
     @Async // Mark this method as asynchronous
     public CompletableFuture<ResponseEntity<String>> notifyTelex(String message, String channelId) {
         try {
+            String webhookUrl = getWebhookUrl(channelId); // Fetch dynamic webhook URL
+
+            if (webhookUrl == null || webhookUrl.isBlank()) {
+                log.error("❌ No webhook URL found for channel '{}'.", channelId);
+                return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("event_name", "web_scrape");
             payload.put("username", "site-analyzer");
@@ -102,14 +114,30 @@ public class TelexServiceImpl implements TelexService {
             payload.put("message", message);
             payload.put("channel_id", channelId);
 
-            return CompletableFuture.supplyAsync(() -> sendToTelex(payload));
+            return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl,payload));
         } catch (Exception e) {
             log.error("Failed to send Telex notification: {}", e.getMessage(), e);
             return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to send Telex notification."));
         }
     }
 
-    private ResponseEntity<String> sendToTelex(Map<String, Object> payload) {
+    public void updateWebhookUrl(String channelId, List<Setting> settings) {
+        String webhookUrl = settings.stream()
+                .filter(setting -> "webhook_url".equals(setting.label()))
+                .map(Setting::defaultValue)
+                .filter(url -> url != null && !url.isBlank())
+                .findFirst()
+                .orElse(null);
+
+        if (webhookUrl != null) {
+            webhookCache.put(channelId, webhookUrl);
+            log.info("✅ Updated webhook URL for channel '{}': {}", channelId, webhookUrl);
+        } else {
+            log.warn("⚠️ No webhook URL provided in settings for channel '{}'.", channelId);
+        }
+    }
+
+    private ResponseEntity<String> sendToTelex(String webhookUrl,Map<String, Object> payload) {
         int maxRetries = 3; // Retry up to 3 times
         int retryDelay = 1000; // Start with 1-second delay
 
@@ -122,7 +150,7 @@ public class TelexServiceImpl implements TelexService {
                 HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
                 log.info("📤 Sending message to Telex (attempt {}): {}", attempt, payload);
 
-                ResponseEntity<String> response = restTemplate.postForEntity(TELEX_WEBHOOK_URL, entity, String.class);
+                ResponseEntity<String> response = restTemplate.postForEntity(webhookUrl, entity, String.class);
 
                 if (response.getStatusCode().is2xxSuccessful()) {
                     log.info("✅ Message sent successfully: {}", response.getBody());
@@ -143,4 +171,11 @@ public class TelexServiceImpl implements TelexService {
 
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("Failed after multiple retries");
     }
+
+
+    private String getWebhookUrl(String channelId) {
+        return webhookCache.getOrDefault(channelId, ""); // Return cached webhook if available
+    }
+
+
 }
