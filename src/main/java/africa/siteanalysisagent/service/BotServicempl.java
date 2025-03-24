@@ -30,31 +30,31 @@ public class BotServicempl implements BotService {
     private final Set<String> processedMessages = ConcurrentHashMap.newKeySet();
 
 
-
-    @PostConstruct
-    public void init() {
-        Executors.newSingleThreadScheduledExecutor()
-                .scheduleAtFixedRate(processedMessages::clear, 1, 1, TimeUnit.HOURS);
-    }
+    // ===== NEW: SIMPLE LOOP PREVENTION =====
+    private String lastProcessedInput;
 
 
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
-        // NEW: Skip duplicate messages (only added line)
-        if (!processedMessages.add(userRequest.channelId() + "|" + userRequest.text())) {
-            return;
-        }
-
-        // ===== KEEP EVERYTHING BELOW EXACTLY THE SAME =====
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
+        // Skip if this is the same as last processed input
+        if (text != null && text.equals(lastProcessedInput)) {
+            return;
+        }
+
+        // Store the input before processing
+        lastProcessedInput = text;
+
+        // ===== KEEP ALL YOUR EXISTING CODE BELOW =====
         if (text == null || text.isBlank()) {
             return;
         }
 
         text = text.trim();
+
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
             handleFixConfirmation(channelId, text);
