@@ -14,14 +14,13 @@ public record TelexUserRequest(
         List<Setting> settings) {
 
     @JsonCreator
-    public TelexUserRequest(@JsonProperty("text") String text,
-                            @JsonProperty("channelId") String channelId,
-                            @JsonProperty("settings") List<Setting> settings,
-                            @JsonProperty("data") Map<String, Object> data) {
-        this(
-                text != null ? text : (data != null ? (String) data.get("text") : null),
-                (channelId != null && !channelId.isBlank()) ? channelId : (data != null ? (String) data.get("channelId") : "default-channel-id"),
-                settings != null ? settings : List.of()
-        );
+    public TelexUserRequest(
+            @JsonProperty("text") String text,
+            @JsonProperty("channelId") String channelId,
+            @JsonProperty("settings") List<Setting> settings
+    ) {
+        this.text = (text != null) ? text : "";  // ✅ Ensure text is never null
+        this.channelId = (channelId != null && !channelId.isBlank()) ? channelId : "default-channel-id";
+        this.settings = (settings != null) ? settings : List.of(); // ✅ Ensure settings is never null
     }
 }
