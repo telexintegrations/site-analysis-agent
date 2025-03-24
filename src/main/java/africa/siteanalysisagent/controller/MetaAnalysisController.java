@@ -46,22 +46,17 @@ public class MetaAnalysisController {
     }
 
     private String extractTextFromPayload(Map<String, Object> payload) {
-        // Case 1: Direct text field
+        // Case 1: HTML message content
+        if (payload.containsKey("message") && payload.get("message") instanceof String) {
+            String htmlMessage = (String) payload.get("message");
+            return htmlMessage.replaceAll("<[^>]+>", "").trim(); // Strip HTML tags
+        }
+        // Case 2: Normal text field
         if (payload.containsKey("text")) {
             return payload.get("text").toString();
         }
-        // Case 2: Nested in message object
-        if (payload.containsKey("message") && ((Map<?,?>)payload.get("message")).containsKey("text")) {
-            return ((Map<?, ?>) payload.get("message")).get("text").toString();
-        }
-        // Case 3: Array format
-        if (payload.containsKey("text_array")) {
-            List<?> textArray = (List<?>) payload.get("text_array");
-            return textArray.isEmpty() ? null : textArray.get(0).toString();
-        }
         return null;
     }
-
     private String extractChannelIdFromPayload(Map<String, Object> payload) {
         // Try common channel ID field names
         if (payload.containsKey("channel_id")) {
