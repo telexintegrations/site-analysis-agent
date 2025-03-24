@@ -7,7 +7,6 @@ import africa.siteanalysisagent.model.ApiResponse;
 import africa.siteanalysisagent.model.TelexIntegration;
 import africa.siteanalysisagent.service.BotService;
 import africa.siteanalysisagent.service.TelexServiceIntegration;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -29,42 +28,25 @@ public class MetaAnalysisController {
     private final BotService botService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> rawRequest) throws IOException {
-        log.info("📩 Raw Telex Payload: {}", rawRequest); // Log the full request from Telex
-
-        if (rawRequest == null || rawRequest.isEmpty()) {
-            log.error("❌ No request data received from Telex!");
-            return ResponseEntity.badRequest().build();
-        }
-
-        // Extract values safely
-        String text = (String) rawRequest.getOrDefault("text", "").toString();
-        String channelId = (String) rawRequest.getOrDefault("channelId", "default-channel-id");
-
-        if (text == null || text.isBlank()) {
-            log.warn("⚠️ Empty text received from Telex. Ignoring request.");
-            return ResponseEntity.ok().build(); // Ignore empty text instead of failing
-        }
-
-        log.info("✅ Processing message: '{}' from channel '{}'", text, channelId);
-
-        TelexUserRequest request = new TelexUserRequest(text, channelId, List.of());
-
-        botService.handleEvent(request);
-        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
-
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
+        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
     }
 
-
-
-//    @PostMapping("/scrape")
-//    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
-//        if (request.text() != null) {
-//            botService.handleEvent(request);  // Pass the validated request directly
-//        }
+//    @PostMapping("/webhook")
+//    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
 //
-//        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+//        String text = payload.get("text");
+//        String channelId = payload.get("channel_id"); // Extract channel ID
+//
+//
+//        if (text != null) {
+//            TelexUserRequest telex = new TelexUserRequest(text, channelId, List.of());
+//            telex.text();
+//            telex.channelId(); // Ensure channelId is never null
+//            botService.handleEvent(telex);
+//        }
+//        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
 //        return ResponseEntity.ok().build();
 //    }
 
