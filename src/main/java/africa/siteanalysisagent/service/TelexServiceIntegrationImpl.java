@@ -105,10 +105,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         // Update webhook URL dynamically
         telexService.updateWebhookUrl(telexUserRequest.channelId(), telexUserRequest.settings());
 
-        if ("site-analyzer".equalsIgnoreCase(telexUserRequest.username())) {
-            log.warn("⚠️ Ignoring Telex message because it was sent by the bot itself.");
-            return Map.of("message", "Ignored bot response.");
-        }
+
         // Delegate all user commands to the BotService
         log.info("📩 Processing message: '{}' from '{}'", safeRequest.text(), safeRequest.channelId());
         botService.handleEvent(safeRequest);

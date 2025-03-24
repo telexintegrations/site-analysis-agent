@@ -2,15 +2,15 @@ package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.dto.Button;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 @Service
 @Slf4j
@@ -23,31 +23,77 @@ public class BotServicempl implements BotService {
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final Map<String, String> userStates = new HashMap<>(); // Tracks user states
     private final Map<String, String> lastSentMessage = new HashMap<>(); // Tracks last bot message per channel
+    private final Map<String, String> lastBotMessagePerChannel = new ConcurrentHashMap<>();
+    private final Map<String, String> lastUserMessagePerChannel = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+
+
+    @PostConstruct
+    public void init() {
+        Timer timer = new Timer("MessageTrackerCleaner", true); // Daemon thread
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                lastBotMessagePerChannel.clear();
+                lastUserMessagePerChannel.clear();
+                log.debug("Cleared message tracking caches");
+            }
+        }, 300_000, 300_000); // Initial delay 5 min, repeat every 5 min
+    }
 
 
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
-
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
+        // Skip processing if message is invalid or duplicate
+        if (shouldSkipMessage(text, channelId)) {
+            return;
+        }
+
+        // Track this user message
+        lastUserMessagePerChannel.put(channelId, text);
+
+        try {
+            processUserMessage(text, channelId);
+        } catch (Exception e) {
+            log.error("Error processing message: {}", e.getMessage());
+            sendTrackedMessage(channelId, "❌ An error occurred. Please try again.");
+        }
+    }
+
+    private boolean shouldSkipMessage(String text, String channelId) {
+        // Skip empty messages
         if (text == null || text.isBlank()) {
-            log.warn("⚠️ Received empty message from channel {}", channelId);
-            return;
+            log.debug("Skipping empty message");
+            return true;
         }
 
-        // Check if this message is an echo of the bot's last response
-        if (lastSentMessage.containsKey(channelId) && lastSentMessage.get(channelId).equals(text)) {
-            log.debug("🔄 Ignoring Telex echo message: '{}'", text);
-            return;
+        // Skip if this is the bot's own echoed message
+        if (text.equals(lastBotMessagePerChannel.get(channelId))) {
+            log.debug("Skipping bot echo: {}", text);
+            return true;
         }
 
-        log.info("📩 Received message: '{}' from '{}'", text, channelId);
+        // Skip duplicate user messages
+        if (text.equals(lastUserMessagePerChannel.get(channelId))) {
+            log.debug("Skipping duplicate user message: {}", text);
+            return true;
+        }
 
-        text = text.trim(); // Now safe to use
+        return false;
+    }
 
+    private void processUserMessage(String text, String channelId) {
+        text = text.trim();
 
+        // Handle stateful interactions first
+        if (handleStatefulInteraction(text, channelId)) {
+            return;
+        }
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
             handleFixConfirmation(channelId, text);
@@ -126,11 +172,23 @@ public class BotServicempl implements BotService {
 
         telexService.sendMessage(channelId, "❌ Invalid command or URL. Please type 'start' to begin.");
     }
-
-    public void sendMessage(String channelId, String message) {
-        telexService.sendMessage(channelId, message);
-        lastSentMessage.put(channelId, message); // Store last message sent
+    private void sendTrackedMessage(String channelId, String message) {
+        lastBotMessagePerChannel.put(channelId, message);
+        telexService.sendMessage(channelId, message)
+                .exceptionally(e -> {
+                    log.error("Failed to send message: {}", e.getMessage());
+                    return null;
+                });
     }
+
+    private boolean handleStatefulInteraction(String text, String channelId) {
+        if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
+            handleFixConfirmation(channelId, text);
+            return true;
+        }
+        return false;
+    }
+
 
     private void handleFixConfirmation(String channelId, String userInput) {
         if (userInput.equalsIgnoreCase("apply_fixes")) {
