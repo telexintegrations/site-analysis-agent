@@ -29,13 +29,34 @@ public class MetaAnalysisController {
     private final BotService botService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
-        System.out.println("RAW INPUT: " + request);  // Log the exact payload
-        // The request is now guaranteed to have non-null text and channelId
+    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> rawRequest) throws IOException {
+        log.info("📩 Raw Telex Payload: {}", rawRequest); // Log the full request from Telex
+
+        if (rawRequest == null || rawRequest.isEmpty()) {
+            log.error("❌ No request data received from Telex!");
+            return ResponseEntity.badRequest().build();
+        }
+
+        // Extract values safely
+        String text = (String) rawRequest.getOrDefault("text", "").toString();
+        String channelId = (String) rawRequest.getOrDefault("channelId", "default-channel-id");
+
+        if (text == null || text.isBlank()) {
+            log.warn("⚠️ Empty text received from Telex. Ignoring request.");
+            return ResponseEntity.ok().build(); // Ignore empty text instead of failing
+        }
+
+        log.info("✅ Processing message: '{}' from channel '{}'", text, channelId);
+
+        TelexUserRequest request = new TelexUserRequest(text, channelId, List.of());
+
         botService.handleEvent(request);
         telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+
         return ResponseEntity.ok().build();
     }
+
+
 
 //    @PostMapping("/scrape")
 //    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {

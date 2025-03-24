@@ -26,10 +26,18 @@ public class BotServicempl implements BotService {
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
-        String text = userRequest.text().trim();
+        String text = userRequest.text();
         String channelId = userRequest.channelId();
 
+        if (text.equals("[No text]")) {
+            log.warn("⚠️ Received empty or invalid message from Telex, ignoring...");
+            return;  // Stop processing
+        }
+
         log.info("📩 Received message: '{}' from '{}'", text, channelId);
+
+        text = text.trim(); // Now safe to use
+
 
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
@@ -85,12 +93,6 @@ public class BotServicempl implements BotService {
 
             // Set user state to wait for fix confirmation
             userStates.put(channelId, "awaiting_fix_confirmation");
-
-//            telexService.sendMessage(channelId, seoReport);
-
-//            // Prompt user to apply fixes
-//            sendFixPrompt(channelId);
-
             // Clear the URL state after the scan
             userUrls.remove(channelId);
             return;

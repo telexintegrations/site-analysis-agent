@@ -93,17 +93,14 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     @Override
     public Map<String, Object> scrapeAndGenerateUrlReport(TelexUserRequest telexUserRequest) throws IOException {
 
-        try {
-            log.info("📩 Raw Telex Request Payload: {}", new ObjectMapper().writeValueAsString(telexUserRequest));
-        } catch (JsonProcessingException e) {
-            log.error("❌ Failed to log Telex request payload: {}", e.getMessage());
-        }
-
-        String userInput = (telexUserRequest.text() != null) ? telexUserRequest.text().trim() : "";
-        String channelId = telexUserRequest.channelId();
+        TelexUserRequest safeRequest = TelexUserRequest.fromRawData(
+                telexUserRequest.text(),
+                telexUserRequest.channelId(),
+                telexUserRequest.settings()
+        );
 
         // Update webhook URL dynamically
-        telexService.updateWebhookUrl(channelId, telexUserRequest.settings());
+        telexService.updateWebhookUrl(telexUserRequest.channelId(), telexUserRequest.settings());
         // Delegate all user commands to the BotService
         botService.handleEvent(telexUserRequest);
 
