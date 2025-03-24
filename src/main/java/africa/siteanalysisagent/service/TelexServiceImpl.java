@@ -127,7 +127,7 @@ public class TelexServiceImpl implements TelexService {
                 .map(Setting::defaultValue)
                 .filter(url -> url != null && !url.isBlank())
                 .findFirst()
-                .orElse(null);
+                .orElse("https://ping.telex.im/v1/webhooks/01958e7d-78cd-73d4-a9e3-ee05c7a0aab0");
 
         if (webhookUrl != null) {
             webhookCache.put(channelId, webhookUrl);
