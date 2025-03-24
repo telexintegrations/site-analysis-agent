@@ -7,6 +7,7 @@ import africa.siteanalysisagent.model.ApiResponse;
 import africa.siteanalysisagent.model.TelexIntegration;
 import africa.siteanalysisagent.service.BotService;
 import africa.siteanalysisagent.service.TelexServiceIntegration;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -28,9 +29,12 @@ public class MetaAnalysisController {
     private final BotService botService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
-        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
+    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
+        System.out.println("RAW INPUT: " + request);  // Log the exact payload
+        // The request is now guaranteed to have non-null text and channelId
+        botService.handleEvent(request);
+        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+        return ResponseEntity.ok().build();
     }
 
 //    @PostMapping("/scrape")
