@@ -28,10 +28,26 @@ public class MetaAnalysisController {
     private final BotService botService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
-        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
+    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> rawRequest) throws IOException {
+        log.info("📩 Raw Telex Payload: {}", rawRequest); // Log full request for debugging
+
+        // Extract values safely
+        String text = (String) rawRequest.getOrDefault("text", "").toString();
+        String channelId = (String) rawRequest.getOrDefault("channelId", "default-channel-id");
+
+        if (text == null || text.isBlank()) {
+            log.warn("⚠️ Empty text received from Telex. Ignoring request.");
+            return ResponseEntity.badRequest().build();
+        }
+
+        TelexUserRequest request = new TelexUserRequest(text, channelId, List.of());
+
+        botService.handleEvent(request);
+        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+
+        return ResponseEntity.ok().build();
     }
+
 
 //    @PostMapping("/webhook")
 //    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {

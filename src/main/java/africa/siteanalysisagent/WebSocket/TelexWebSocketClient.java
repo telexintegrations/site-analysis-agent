@@ -59,9 +59,9 @@ public class TelexWebSocketClient extends TextWebSocketHandler {
             TelexUserRequest userRequest = objectMapper.readValue(payload, TelexUserRequest.class);
             String channelId = userRequest.channelId();
 
-            if (channelId != null && !channelId.isEmpty()) {
-                webSocketMessageService.registerSession(channelId, session);
-                log.info("🔗 Linked WebSocket session to channelId: {}", channelId);
+            if (userRequest.text() == null || userRequest.text().isBlank()) {
+                log.warn("⚠️ Empty message received from Telex WebSocket.");
+                return;
             }
 
             botService.handleEvent(userRequest);
