@@ -29,9 +29,20 @@ public class MetaAnalysisController {
 
     @PostMapping("/scrape")
     public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
-        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
+        log.info("📩 Received Telex request: {}", telexUserRequest);
+
+        // Ensure text is not null or empty
+        if (telexUserRequest.text() == null || telexUserRequest.text().isBlank()) {
+            log.warn("⚠️ Received request with empty text. Ignoring.");
+            return ResponseEntity.badRequest().body("Invalid request: text is required.");
+        }
+
+        // Process command through bot first
+        botService.handleEvent(telexUserRequest);
+
+        return ResponseEntity.ok().body("Command processed by bot.");
     }
+
 
 //    @PostMapping("/webhook")
 //    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
