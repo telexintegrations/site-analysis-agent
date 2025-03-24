@@ -24,6 +24,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     private final MetaAnalysisService metaAnalysisService;
 
     private final BotService botService;
+    private final TelexService telexService;
 
     private final Map<String, String> userUrls = new HashMap<>();
 
@@ -97,25 +98,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         log.info("📩 Processing URL '{}' from Channel '{}'", userInput, channelId);
 
 
-        if (isValidUrl(userInput)) {
-            userUrls.put(channelId, userInput);
-            log.info("✅ Stored URL '{}' for channel '{}'", userInput, channelId);
-        }
-        // Log the settings for debugging
-        log.info("Settings received: {}", telexUserRequest.settings());
-
-//
-//        String webhookUrl = telexUserRequest.settings().stream()
-//                .filter(setting -> "webhook_url".equals(setting.label()))
-//                .map(Setting::defaultValue)
-//                .filter(url -> url != null && !url.isBlank())
-//                .findFirst()
-//                .orElse("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4");
-
-//        log.info("Webhook URL retrieved: {}", webhookUrl);
-
-        log.info("📩 Received message: '{}' from '{}'", userInput, channelId);
-
+        // Update webhook URL dynamically
+        telexService.updateWebhookUrl(channelId, telexUserRequest.settings());
         // Delegate all user commands to the BotService
         botService.handleEvent(telexUserRequest);
 
@@ -133,12 +117,11 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         log.info("📡 Scanning confirmed for '{}'", urlToScan);
 
         try {
-             metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
             userUrls.remove(channelId);
 
             return Map.of(
                     "url", urlToScan,
-//                    "seoReport", seoReport,
                     "status", "success"
             );
         } catch (Exception e) {
