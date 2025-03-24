@@ -93,11 +93,10 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     @Override
     public Map<String, Object> scrapeAndGenerateUrlReport(TelexUserRequest telexUserRequest) throws IOException {
 
-        TelexUserRequest safeRequest = TelexUserRequest.fromRawData(
-                telexUserRequest.text(),
-                telexUserRequest.channelId(),
-                telexUserRequest.settings()
-        );
+        String userInput = sanitizeInput(telexUserRequest.text());
+        String channelId = telexUserRequest.channelId(); // Extract channelId directly
+
+        log.info("📩 Processing URL '{}' from Channel '{}'", userInput, channelId);
 
         // Update webhook URL dynamically
         telexService.updateWebhookUrl(telexUserRequest.channelId(), telexUserRequest.settings());
