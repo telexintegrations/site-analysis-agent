@@ -16,14 +16,20 @@ public record TelexUserRequest(
             @JsonProperty("channelId") String channelId,
             @JsonProperty("settings") List<Setting> settings
     ) {
-        this.text = (text != null && !text.isBlank()) ? text : "[No text]"; // Fix null/empty text issue
+        this.text = cleanHtml(text);
         this.channelId = (channelId != null && !channelId.isBlank()) ? channelId : "default-channel-id";
         this.settings = (settings != null) ? settings : List.of(); // Ensure settings is never null
     }
 
-    // ✅ Static factory method to safely create instances
+    // ✅ Static factory method to handle raw input safely
     public static TelexUserRequest fromRawData(Object rawText, String channelId, List<Setting> settings) {
-        String textValue = (rawText instanceof String && !((String) rawText).isBlank()) ? (String) rawText : "[No text]";
+        String textValue = (rawText instanceof String && !((String) rawText).isBlank()) ? cleanHtml((String) rawText) : "[No text]";
         return new TelexUserRequest(textValue, channelId, settings);
+    }
+
+    // ✅ Remove HTML tags from text
+    private static String cleanHtml(String input) {
+        if (input == null || input.isBlank()) return "[No text]";
+        return input.replaceAll("<[^>]*>", "").trim(); // Remove HTML tags
     }
 }
