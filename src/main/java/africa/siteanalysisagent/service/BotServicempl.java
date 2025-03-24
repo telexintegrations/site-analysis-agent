@@ -22,20 +22,24 @@ public class BotServicempl implements BotService {
     private final Map<String, String> userUrls = new HashMap<>();
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final Map<String, String> userStates = new HashMap<>(); // Tracks user states
+    private final Map<String, String> lastSentMessage = new HashMap<>(); // Tracks last bot message per channel
+
 
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
-        // Skip processing if message is from the bot itself
-        if ("site-analyzer".equals(userRequest.username())) {
-            log.debug("Ignoring self-generated message");
-            return;
-        }
+
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        if (userRequest.text() == null || userRequest.text().isBlank()) {
-            log.warn("⚠️ Received empty message from channel {}", userRequest.channelId());
+        if (text == null || text.isBlank()) {
+            log.warn("⚠️ Received empty message from channel {}", channelId);
+            return;
+        }
+
+        // Check if this message is an echo of the bot's last response
+        if (lastSentMessage.containsKey(channelId) && lastSentMessage.get(channelId).equals(text)) {
+            log.debug("🔄 Ignoring Telex echo message: '{}'", text);
             return;
         }
 
@@ -121,6 +125,11 @@ public class BotServicempl implements BotService {
         }
 
         telexService.sendMessage(channelId, "❌ Invalid command or URL. Please type 'start' to begin.");
+    }
+
+    public void sendMessage(String channelId, String message) {
+        telexService.sendMessage(channelId, message);
+        lastSentMessage.put(channelId, message); // Store last message sent
     }
 
     private void handleFixConfirmation(String channelId, String userInput) {
