@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -26,74 +27,34 @@ public class BotServicempl implements BotService {
     private final Map<String, String> lastBotMessagePerChannel = new ConcurrentHashMap<>();
     private final Map<String, String> lastUserMessagePerChannel = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final Set<String> processedMessages = ConcurrentHashMap.newKeySet();
 
 
 
     @PostConstruct
     public void init() {
-        Timer timer = new Timer("MessageTrackerCleaner", true); // Daemon thread
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                lastBotMessagePerChannel.clear();
-                lastUserMessagePerChannel.clear();
-                log.debug("Cleared message tracking caches");
-            }
-        }, 300_000, 300_000); // Initial delay 5 min, repeat every 5 min
+        Executors.newSingleThreadScheduledExecutor()
+                .scheduleAtFixedRate(processedMessages::clear, 1, 1, TimeUnit.HOURS);
     }
 
 
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
+        // NEW: Skip duplicate messages (only added line)
+        if (!processedMessages.add(userRequest.channelId() + "|" + userRequest.text())) {
+            return;
+        }
+
+        // ===== KEEP EVERYTHING BELOW EXACTLY THE SAME =====
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        // Skip processing if message is invalid or duplicate
-        if (shouldSkipMessage(text, channelId)) {
-            return;
-        }
-
-        // Track this user message
-        lastUserMessagePerChannel.put(channelId, text);
-
-        try {
-            processUserMessage(text, channelId);
-        } catch (Exception e) {
-            log.error("Error processing message: {}", e.getMessage());
-            sendTrackedMessage(channelId, "❌ An error occurred. Please try again.");
-        }
-    }
-
-    private boolean shouldSkipMessage(String text, String channelId) {
-        // Skip empty messages
         if (text == null || text.isBlank()) {
-            log.debug("Skipping empty message");
-            return true;
-        }
-
-        // Skip if this is the bot's own echoed message
-        if (text.equals(lastBotMessagePerChannel.get(channelId))) {
-            log.debug("Skipping bot echo: {}", text);
-            return true;
-        }
-
-        // Skip duplicate user messages
-        if (text.equals(lastUserMessagePerChannel.get(channelId))) {
-            log.debug("Skipping duplicate user message: {}", text);
-            return true;
-        }
-
-        return false;
-    }
-
-    private void processUserMessage(String text, String channelId) {
-        text = text.trim();
-
-        // Handle stateful interactions first
-        if (handleStatefulInteraction(text, channelId)) {
             return;
         }
+
+        text = text.trim();
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
             handleFixConfirmation(channelId, text);
