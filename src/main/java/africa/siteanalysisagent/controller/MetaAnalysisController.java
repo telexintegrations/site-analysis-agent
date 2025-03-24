@@ -1,23 +1,15 @@
 package africa.siteanalysisagent.controller;
 
-import africa.siteanalysisagent.dto.ApiErrorResponse;
-import africa.siteanalysisagent.dto.Setting;
-import africa.siteanalysisagent.dto.TelexUserRequest;
-import africa.siteanalysisagent.model.ApiResponse;
-import africa.siteanalysisagent.model.TelexIntegration;
-import africa.siteanalysisagent.service.BotService;
-import africa.siteanalysisagent.service.TelexService;
-import africa.siteanalysisagent.service.TelexServiceIntegration;
+import africa.siteanalysisagent.dto.*;
+import africa.siteanalysisagent.model.*;
+import africa.siteanalysisagent.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/meta-analysis")
@@ -25,106 +17,105 @@ import java.util.Map;
 @Slf4j
 public class MetaAnalysisController {
 
-    private final TelexServiceIntegration telexServiceIntegration;
+    private final TelexServiceIntegration telexService;
     private final BotService botService;
-    private final TelexService telexService;
+    private final TelexService telexWebhookService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<Void> handleWebhook(@RequestBody WebhookPayload payload) {
         try {
-            // 1. Extract channel ID
-            String channelId = payload.containsKey("channel_id")
-                    ? payload.get("channel_id").toString()
-                    : "default-channel-id";
+            // Extract and validate core data
+            WebhookData data = payload.extractValidData();
 
-            // 2. Extract and update webhook URL
-            if (payload.containsKey("settings")) {
-                List<Map<String, Object>> settings = (List<Map<String, Object>>) payload.get("settings");
-                telexService.updateWebhookUrl(channelId, convertToSettings(settings));
+            // Update webhook configuration if settings exist
+            if (payload.hasSettings()) {
+                telexWebhookService.updateWebhookUrl(data.channelId(), payload.getSettings());
             }
 
-            // 3. Process message
-            String message = extractMessage(payload);
-            if (message != null && !message.isBlank()) {
-                TelexUserRequest request = new TelexUserRequest(message, channelId, List.of());
-                botService.handleEvent(request);
+            // Process message if valid
+            if (data.hasValidMessage()) {
+                botService.handleEvent(new TelexUserRequest(
+                        data.message(),
+                        data.channelId(),
+                        data.username(),
+                        List.of()
+                ));
             }
 
             return ResponseEntity.ok().build();
         } catch (Exception e) {
-            log.error("Failed to process webhook", e);
+            log.error("Webhook processing failed", e);
             return ResponseEntity.badRequest().build();
         }
     }
 
-    private List<Setting> convertToSettings(List<Map<String, Object>> rawSettings) {
-        return rawSettings.stream()
-                .map(setting -> new Setting(
-                        (String) setting.get("label"),
-                        (String) setting.get("type"),
-                        (String) setting.get("description"),
-                        (String) setting.get("default"),
-                        (Boolean) setting.get("required")
-                ))
-                .toList();
-    }
-
-    private String extractMessage(Map<String, Object> payload) {
-        if (payload.containsKey("message") && payload.get("message") instanceof String) {
-            return ((String) payload.get("message")).replaceAll("<[^>]+>", "").trim();
-        }
-        return null;
-    }
-
-    private String extractTextFromPayload(Map<String, Object> payload) {
-        // Case 1: HTML message content
-        if (payload.containsKey("message") && payload.get("message") instanceof String) {
-            String htmlMessage = (String) payload.get("message");
-            return htmlMessage.replaceAll("<[^>]+>", "").trim(); // Strip HTML tags
-        }
-        // Case 2: Normal text field
-        if (payload.containsKey("text")) {
-            return payload.get("text").toString();
-        }
-        return null;
-    }
-    private String extractChannelIdFromPayload(Map<String, Object> payload) {
-        // Try common channel ID field names
-        if (payload.containsKey("channel_id")) {
-            return payload.get("channel_id").toString();
-        }
-        if (payload.containsKey("channelId")) {
-            return payload.get("channelId").toString();
-        }
-        return "default-channel-id";
-    }
-
-//    @PostMapping("/webhook")
-//    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
-//
-//        String text = payload.get("text");
-//        String channelId = payload.get("channel_id"); // Extract channel ID
-//
-//
-//        if (text != null) {
-//            TelexUserRequest telex = new TelexUserRequest(text, channelId, List.of());
-//            telex.text();
-//            telex.channelId(); // Ensure channelId is never null
-//            botService.handleEvent(telex);
-//        }
-//        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
-//        return ResponseEntity.ok().build();
-//    }
-
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
-            TelexIntegration telexIntegration = telexServiceIntegration.getTelexConfig();
-            return ResponseEntity.ok(telexIntegration);
+            return ResponseEntity.ok(telexService.getTelexConfig());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                    new ApiErrorResponse("Failed to retrieve Telex configuration", e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR.value(), LocalDate.now().toString())
+            return ResponseEntity.internalServerError()
+                    .body(new ApiErrorResponse(
+                            "Configuration error",
+                            e.getMessage(),
+                            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                            LocalDate.now().toString()
+                    ));
+        }
+    }
+
+    // Inner DTO for payload handling
+    private record WebhookPayload(
+            Object message,
+            Object text,
+            String channel_id,
+            String channelId,
+            String username,
+            List<Map<String, Object>> settings
+    ) {
+        public WebhookData extractValidData() {
+            return new WebhookData(
+                    extractCleanMessage(),
+                    determineChannelId(),
+                    username != null ? username : "unknown"
             );
+        }
+
+        private String extractCleanMessage() {
+            String raw = message instanceof String ? (String) message :
+                    text instanceof String ? (String) text : null;
+            return raw != null ? raw.replaceAll("<[^>]+>", "").trim() : null;
+        }
+
+        private String determineChannelId() {
+            return channel_id != null ? channel_id :
+                    channelId != null ? channelId : "default-channel-id";
+        }
+
+        public boolean hasSettings() {
+            return settings != null && !settings.isEmpty();
+        }
+
+        public List<Setting> getSettings() {
+            return settings.stream()
+                    .map(setting -> new Setting(
+                            (String) setting.get("label"),
+                            (String) setting.get("type"),
+                            (String) setting.get("description"),
+                            (String) setting.get("default"),
+                            (Boolean) setting.get("required")
+                    ))
+                    .toList();
+        }
+    }
+
+    private record WebhookData(
+            String message,
+            String channelId,
+            String username
+    ) {
+        public boolean hasValidMessage() {
+            return message != null && !message.isBlank();
         }
     }
 }

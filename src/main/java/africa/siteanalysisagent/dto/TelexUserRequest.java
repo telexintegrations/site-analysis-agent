@@ -8,28 +8,37 @@ import java.util.List;
 public record TelexUserRequest(
         String text,
         String channelId,
+        String username,
         List<Setting> settings
 ) {
     @JsonCreator
     public TelexUserRequest(
-            @JsonProperty("text") String text,
-            @JsonProperty("channelId") String channelId,
+            @JsonProperty("text") String text,  // Only String allowed
+            @JsonProperty("channel_id") String channelId,
+            @JsonProperty("username") String username,
             @JsonProperty("settings") List<Setting> settings
     ) {
-        this.text = cleanHtml(text);
+        this.text = cleanText(text);
         this.channelId = (channelId != null && !channelId.isBlank()) ? channelId : "default-channel-id";
-        this.settings = (settings != null) ? settings : List.of(); // Ensure settings is never null
+        this.username = (username != null && !username.isBlank()) ? username : "unknown";
+        this.settings = (settings != null) ? settings : List.of();
     }
 
-    // ✅ Static factory method to handle raw input safely
-    public static TelexUserRequest fromRawData(Object rawText, String channelId, List<Setting> settings) {
-        String textValue = (rawText instanceof String && !((String) rawText).isBlank()) ? cleanHtml((String) rawText) : "[No text]";
-        return new TelexUserRequest(textValue, channelId, settings);
+    // Clean and validate text input
+    private static String cleanText(String textInput) {
+        if (textInput == null || textInput.isBlank()) {
+            return "[No text]";
+        }
+        return cleanHtml(textInput);
     }
 
-    // ✅ Remove HTML tags from text
+    // Remove HTML tags and trim whitespace
     private static String cleanHtml(String input) {
-        if (input == null || input.isBlank()) return "[No text]";
-        return input.replaceAll("<[^>]*>", "").trim(); // Remove HTML tags
+        return input.replaceAll("<[^>]*>", "").trim();
+    }
+
+    // Static factory method for backward compatibility
+    public static TelexUserRequest fromRawData(String rawText, String channelId, List<Setting> settings) {
+        return new TelexUserRequest(rawText, channelId, "unknown", settings);
     }
 }

@@ -26,6 +26,11 @@ public class BotServicempl implements BotService {
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
+        // Skip processing if message is from the bot itself
+        if ("site-analyzer".equals(userRequest.username())) {
+            log.debug("Ignoring self-generated message");
+            return;
+        }
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
