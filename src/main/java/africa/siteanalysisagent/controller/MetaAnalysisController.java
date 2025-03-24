@@ -6,6 +6,7 @@ import africa.siteanalysisagent.dto.TelexUserRequest;
 import africa.siteanalysisagent.model.ApiResponse;
 import africa.siteanalysisagent.model.TelexIntegration;
 import africa.siteanalysisagent.service.BotService;
+import africa.siteanalysisagent.service.TelexService;
 import africa.siteanalysisagent.service.TelexServiceIntegration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,23 +27,53 @@ public class MetaAnalysisController {
 
     private final TelexServiceIntegration telexServiceIntegration;
     private final BotService botService;
+    private final TelexService telexService;
 
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> rawRequest) throws IOException {
-        log.info("📩 Raw Telex Payload: {}", rawRequest);
+    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String, Object> payload) {
+        try {
+            // 1. Extract channel ID
+            String channelId = payload.containsKey("channel_id")
+                    ? payload.get("channel_id").toString()
+                    : "default-channel-id";
 
-        // Extract text from potential nested structures
-        String text = extractTextFromPayload(rawRequest);
-        String channelId = extractChannelIdFromPayload(rawRequest);
+            // 2. Extract and update webhook URL
+            if (payload.containsKey("settings")) {
+                List<Map<String, Object>> settings = (List<Map<String, Object>>) payload.get("settings");
+                telexService.updateWebhookUrl(channelId, convertToSettings(settings));
+            }
 
-        if (text == null || text.isBlank()) {
-            log.warn("⚠️ Empty text received from Telex. Payload: {}", rawRequest);
+            // 3. Process message
+            String message = extractMessage(payload);
+            if (message != null && !message.isBlank()) {
+                TelexUserRequest request = new TelexUserRequest(message, channelId, List.of());
+                botService.handleEvent(request);
+            }
+
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("Failed to process webhook", e);
             return ResponseEntity.badRequest().build();
         }
+    }
 
-        TelexUserRequest request = new TelexUserRequest(text, channelId, List.of());
-        botService.handleEvent(request);
-        return ResponseEntity.ok().build();
+    private List<Setting> convertToSettings(List<Map<String, Object>> rawSettings) {
+        return rawSettings.stream()
+                .map(setting -> new Setting(
+                        (String) setting.get("label"),
+                        (String) setting.get("type"),
+                        (String) setting.get("description"),
+                        (String) setting.get("default"),
+                        (Boolean) setting.get("required")
+                ))
+                .toList();
+    }
+
+    private String extractMessage(Map<String, Object> payload) {
+        if (payload.containsKey("message") && payload.get("message") instanceof String) {
+            return ((String) payload.get("message")).replaceAll("<[^>]+>", "").trim();
+        }
+        return null;
     }
 
     private String extractTextFromPayload(Map<String, Object> payload) {
