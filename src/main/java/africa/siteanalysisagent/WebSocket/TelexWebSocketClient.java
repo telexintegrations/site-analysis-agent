@@ -52,15 +52,16 @@ public class TelexWebSocketClient extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        String payload = message.getPayload();
         log.info("📩 Received WebSocket message: {}", message.getPayload());
 
         try {
-            TelexUserRequest userRequest = objectMapper.readValue(message.getPayload(), TelexUserRequest.class);
+            TelexUserRequest userRequest = objectMapper.readValue(payload, TelexUserRequest.class);
             String channelId = userRequest.channelId();
 
-            if (channelId != null && !channelId.isEmpty()) {
-                webSocketMessageService.registerSession(channelId, session);
-                log.info("🔗 Linked WebSocket session to channelId: {}", channelId);
+            if (userRequest.text() == null || userRequest.text().isBlank()) {
+                log.warn("⚠️ Empty message received from Telex WebSocket.");
+                return;
             }
 
             botService.handleEvent(userRequest);
