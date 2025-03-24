@@ -27,21 +27,21 @@ public class MetaAnalysisController {
     private final TelexServiceIntegration telexServiceIntegration;
     private final BotService botService;
 
-//    @PostMapping("/scrape")
-//    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-//        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
-//        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
-//    }
-
     @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
-        if (request.text() != null) {
-            botService.handleEvent(request);  // Pass the validated request directly
-        }
-
-        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
+        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
+        return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), response, "Scrape successful", LocalDate.now()));
     }
+
+//    @PostMapping("/scrape")
+//    public ResponseEntity<Void> handleWebhook(@RequestBody TelexUserRequest request) throws IOException {
+//        if (request.text() != null) {
+//            botService.handleEvent(request);  // Pass the validated request directly
+//        }
+//
+//        telexServiceIntegration.scrapeAndGenerateUrlReport(request);
+//        return ResponseEntity.ok().build();
+//    }
 
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
