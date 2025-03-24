@@ -29,20 +29,21 @@ public class MetaAnalysisController {
 
     @PostMapping("/scrape")
     public ResponseEntity<?> scrapeAndGenerateUrlReport(@RequestBody TelexUserRequest telexUserRequest) throws IOException {
-        log.info("📩 Received Telex request: {}", telexUserRequest);
 
-        // Ensure text is not null or empty
-        if (telexUserRequest.text() == null || telexUserRequest.text().isBlank()) {
-            log.warn("⚠️ Received request with empty text. Ignoring.");
-            return ResponseEntity.badRequest().body("Invalid request: text is required.");
+        try {
+            log.info("Received request from channel {}: {}", telexUserRequest.channelId(), telexUserRequest.text());
+
+            // Process the request asynchronously
+            telexServiceIntegration.scrapeAndGenerateUrlReport(telexUserRequest);
+
+            // Return just an acknowledgment
+            return ResponseEntity.ok().build();
+
+        } catch (Exception e) {
+            log.error("Error processing request", e);
+            return ResponseEntity.internalServerError().body("Error processing request");
         }
-
-        // Process command through bot first
-        botService.handleEvent(telexUserRequest);
-
-        return ResponseEntity.ok().body("Command processed by bot.");
     }
-
 
 //    @PostMapping("/webhook")
 //    public ResponseEntity<Void> handleWebhook(@RequestBody Map<String,String> payload) throws IOException {
@@ -60,7 +61,6 @@ public class MetaAnalysisController {
 //        Map<String, Object> response = telexServiceIntegration.scrapeAndGenerateUrlReport(new TelexUserRequest(text,channelId,List.of()));
 //        return ResponseEntity.ok().build();
 //    }
-
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
