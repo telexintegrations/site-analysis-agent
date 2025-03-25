@@ -22,16 +22,18 @@ public class BotServicempl implements BotService {
     private final MetaAnalysisService metaAnalysisService;
     private final Map<String, String> userUrls = new HashMap<>();
     private final Map<String, String> pendingOptimizations = new HashMap<>();
-    private final Map<String, String> userStates = new HashMap<>(); // Tracks user states
-    private final Map<String, String> lastSentMessage = new HashMap<>(); // Tracks last bot message per channel
-    private final Map<String, String> lastBotMessagePerChannel = new ConcurrentHashMap<>();
-    private final Map<String, String> lastUserMessagePerChannel = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-    private final Set<String> processedMessages = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> userStates = new HashMap<>();
+
+    // Track the last message sent by the bot per channel
+    private final Map<String, String> lastBotMessages = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 
 
-    // ===== NEW: SIMPLE LOOP PREVENTION =====
-    private String lastProcessedInput;
+    @PostConstruct
+    public void init() {
+        // Clean up old messages every hour
+        cleanupExecutor.scheduleAtFixedRate(lastBotMessages::clear, 1, 1, TimeUnit.HOURS);
+    }
 
 
 
@@ -40,20 +42,18 @@ public class BotServicempl implements BotService {
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        // Skip if this is the same as last processed input
-        if (text != null && text.equals(lastProcessedInput)) {
+        // Skip if this is the bot's own message
+        if (isMessageFromBot(channelId, text)) {
+            log.debug("Ignoring bot's own message in channel {}", channelId);
             return;
         }
 
-        // Store the input before processing
-        lastProcessedInput = text;
-
-        // ===== KEEP ALL YOUR EXISTING CODE BELOW =====
         if (text == null || text.isBlank()) {
             return;
         }
 
         text = text.trim();
+
 
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
@@ -127,20 +127,33 @@ public class BotServicempl implements BotService {
         if (isValidUrl(text)) {
             userUrls.put(channelId, text);
             userStates.put(channelId, "waiting_for_confirmation");
-            telexService.sendMessage(channelId, "🔗 You entered: " + text + "\n👉 Type 'confirm' to start scanning or 'cancel' to enter a new URL.");
+            sendBotMessage(channelId, "🔗 You entered: " + text + "\n👉 Type 'confirm' to start scanning or 'cancel' to enter a new URL.");
             return;
         }
 
-        telexService.sendMessage(channelId, "❌ Invalid command or URL. Please type 'start' to begin.");
+        sendBotMessage(channelId, "❌ Invalid command or URL. Please type 'start' to begin.");
     }
-    private void sendTrackedMessage(String channelId, String message) {
-        lastBotMessagePerChannel.put(channelId, message);
-        telexService.sendMessage(channelId, message)
-                .exceptionally(e -> {
-                    log.error("Failed to send message: {}", e.getMessage());
-                    return null;
-                });
-    }
+
+
+
+
+private boolean isMessageFromBot(String channelId, String text) {
+    String lastBotMessage = lastBotMessages.get(channelId);
+    return text != null && text.equals(lastBotMessage);
+}
+
+private void sendBotMessage(String channelId, String message) {
+    // Store the message before sending
+    lastBotMessages.put(channelId, message);
+
+    // Then send it
+    telexService.sendMessage(channelId, message)
+            .exceptionally(e -> {
+                log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
+                return null;
+            });
+}
+
 
     private boolean handleStatefulInteraction(String text, String channelId) {
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
