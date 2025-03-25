@@ -22,9 +22,7 @@ public class BotServicempl implements BotService {
     private final Map<String, String> pendingOptimizations = new ConcurrentHashMap<>();
     private final Map<String, String> userStates = new ConcurrentHashMap<>();
 
-    private final Map<String, String> lastBotMessages = new ConcurrentHashMap<>();
-    private final Map<String, String> lastUserMessages = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
+
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
 
     // Bot message identifier - added at the end of ALL bot messages
@@ -113,34 +111,8 @@ public class BotServicempl implements BotService {
         });
     }
 
-//    private void applyOptimizedMetaTags(String channelId) {
-//        if (pendingOptimizations.containsKey(channelId)) {
-//            String optimizedTags = pendingOptimizations.remove(channelId);
-//            telexService.sendMessage(channelId, "✅ AI-optimized meta tags have been applied successfully!\n\n" + optimizedTags);
-//        } else {
-//            telexService.sendMessage(channelId, "⚠️ No AI-optimized meta tags found! Please run a scan first.");
-//        }
-//    }
-//
 
     private boolean isValidUrl(String text) {
         return text.matches("^(https?|ftp)://[^\\s/$.?#].[^\\s]*$");
     }
-//
-//
-//    private void sendWelcomeMessage(String channelId) {
-//        String message = "Welcome! Would you like to scan your URL?";
-//        List<Button> buttons = List.of(new Button("Yes", "yes"), new Button("No", "no"));
-//        telexService.sendInteractiveMessage(channelId, message, buttons);
-//    }
-//
-//    private void sendUrlPrompt(String channelId) {
-//        String message = "Please enter the URL you want to scan:";
-//        telexService.sendMessage(channelId, message);
-//    }
-//
-//    private void sendGoodByeMessage(String channelId) {
-//        String message = "Goodbye! Let me know if you want help later.";
-//        telexService.sendMessage(channelId, message);
-//    }
 }

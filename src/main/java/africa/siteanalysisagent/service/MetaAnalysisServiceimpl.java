@@ -36,11 +36,16 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private final Map<String, Boolean> activeScans = new HashMap<>(); // Tracks active scans per channel
     private final Map<String, Integer> invalidInputCounts = new HashMap<>(); // Tracks invalid inputs per channel
 
+    // Add this constant to match your bot's identifier
+    private static final String BOT_IDENTIFIER = "#bot_message";
+
 
     private void sendOrderedProgress(String scanId, String channelId, int progress, String message) {
         try {
-            Thread.sleep(2000); // Delay to maintain message order
-            progressTracker.sendProgress(scanId, channelId, progress, message);
+            Thread.sleep(1000); // Delay to maintain message order
+            // Only progress updates get the identifier
+            String taggedMessage = message + " " + BOT_IDENTIFIER;
+            progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -94,16 +99,24 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             // Send the Broken & Duplicate Links Report to Telex
             sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport);
 
-            sendOrderedProgress(scanId, channelId, 10, "📊 Calculating SEO Score...");
+            sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...");
             Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
+
+// Add intermediate progress updates
+            sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...");
+            sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...");
+            sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...");
+
             int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
             String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions", "No recommendations found.");
             String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags", "No optimized meta tags found.");
 
+            sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...");
 
             String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
             sendReportAfterTelex(scanId, channelId, "📊 **Final SEO Score Report**", fullReport);
+            sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
             pendingOptimizations.put(channelId, optimizedMetags);
             log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
@@ -112,14 +125,14 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 //             Send the Final SEO Score Report to Telex
 
             telexService.sendInteractiveMessage(channelId,
-                    "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip.",
+                    "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
                     List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore")));
 
 
         } catch (IOException e) {
             log.error("❌ Error during SEO analysis: {}", e.getMessage(), e);
-            sendOrderedProgress(scanId, channelId, 100, "❌ Scan Failed: " + e.getMessage());
-            telexService.sendMessage(channelId, "❌ Error generating SEO report: " + e.getMessage());
+            sendOrderedProgress(scanId, channelId, 100, "❌ Scan Failed: " + e.getMessage()+ " " + BOT_IDENTIFIER);
+            telexService.sendMessage(channelId, "❌ Error generating SEO report: " + e.getMessage()+ " " + BOT_IDENTIFIER);
 
         } finally {
             activeScans.put(channelId, false);
@@ -148,8 +161,8 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         }
 
         try {
-            String botTag = "[SEO REPORT] ";  // Tagging bot-generated SEO reports
-            ResponseEntity<String> response = telexService.sendMessage(channelId, botTag + reportContent).join();
+            String fullMessage = title + "\n\n" + reportContent + "\n\n" + BOT_IDENTIFIER;
+            ResponseEntity<String> response = telexService.sendMessage(channelId, fullMessage).join();
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 log.info("✅ Report sent successfully to Telex: {}", response.getBody());
@@ -161,26 +174,6 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         }
     }
 
-
-    public void handleUserInput(String channelId, String userInput, String url) {
-        if (userInput.equalsIgnoreCase("apply_fixes")) {
-            applyOptimizedMetaTags(channelId, url);
-            invalidInputCounts.remove(channelId); // Reset invalid input count
-        } else if (userInput.equalsIgnoreCase("ignore")) {
-            telexService.sendMessage(channelId, "Thank you for using our service! Let us know if you need further assistance.");
-            invalidInputCounts.remove(channelId); // Reset invalid input count
-        } else {
-            int count = invalidInputCounts.getOrDefault(channelId, 0) + 1;
-            invalidInputCounts.put(channelId, count);
-
-            if (count >= 3) {
-                telexService.sendMessage(channelId, "❌ Too many invalid inputs. Operation canceled.");
-                invalidInputCounts.remove(channelId);
-            } else {
-                telexService.sendMessage(channelId, "❌ Invalid input. Please type `apply_fixes` or `ignore`.");
-            }
-        }
-    }
 
     private void applyOptimizedMetaTags(String channelId, String url) {
         try {
