@@ -38,7 +38,7 @@ public class MetaAnalysisController {
                         data.message(),
                         data.channelId(),
                         data.username(),
-                        List.of()
+                        payload.hasSettings() ? payload.getSettings() : List.of()
                 ));
             }
 
@@ -68,7 +68,6 @@ public class MetaAnalysisController {
     private record WebhookPayload(
             Object message,
             Object text,
-            String channel_id,
             String channelId,
             String username,
             List<Map<String, Object>> settings
@@ -88,8 +87,7 @@ public class MetaAnalysisController {
         }
 
         private String determineChannelId() {
-            return channel_id != null ? channel_id :
-                    channelId != null ? channelId : "default-channel-id";
+                return     channelId != null ? channelId : "default-channel-id";
         }
 
         public boolean hasSettings() {

@@ -24,8 +24,6 @@ public class BotServicempl implements BotService {
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final Map<String, String> userStates = new HashMap<>();
 
-    // Add bot username identification
-    private static final String BOT_USERNAME = "site-analyzer";
 
 
     // Track the last message sent by the bot per channel
@@ -41,9 +39,8 @@ public class BotServicempl implements BotService {
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
 
-        // First check if message is from bot
-        if (BOT_USERNAME.equals(userRequest.username())) {
-            log.debug("Ignoring self message from bot");
+        if ("site-analyzer".equals(userRequest.username())) {
+            log.debug("Ignoring self message from bot (username: {})", userRequest.username());
             return;
         }
         String text = userRequest.text();

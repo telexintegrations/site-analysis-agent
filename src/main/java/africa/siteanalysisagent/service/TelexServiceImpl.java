@@ -108,7 +108,7 @@ public class TelexServiceImpl implements TelexService {
                 return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
             }
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("event_name", "web_scrape");
+            payload.put("event_name", "web_scraper");
             payload.put("username", "site-analyzer");
             payload.put("status", "success");
             payload.put("message", message);
