@@ -63,36 +63,36 @@ public class BotServicempl implements BotService {
         }
 
         if (text.equalsIgnoreCase("yes")) {
-            telexService.sendMessage(channelId, "✅ Please enter the URL you want to scan.");
+            sendBotMessage(channelId, "✅ Please enter the URL you want to scan.");
             return;
         }
 
         if (text.equalsIgnoreCase("no")) {
-            telexService.sendMessage(channelId, "❌ Okay! Let me know if you need anything else.");
+            sendBotMessage(channelId, "❌ Okay! Let me know if you need anything else.");
             return;
         }
 
         if (text.equalsIgnoreCase("cancel")) {
             userUrls.remove(channelId);
-            telexService.sendMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
+            sendBotMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
             return;
         }
 
         if (text.equalsIgnoreCase("confirm")) {
             if (!userUrls.containsKey(channelId)) {
-                telexService.sendMessage(channelId, "⚠️ No URL found! Please enter a valid URL first.");
+                sendBotMessage(channelId, "⚠️ No URL found! Please enter a valid URL first.");
                 return;
             }
 
             if (userStates.get(channelId) != null && userStates.get(channelId).equals("scanning")) {
-                telexService.sendMessage(channelId, "⚠️ A scan is already in progress! Please wait...");
+                sendBotMessage(channelId, "⚠️ A scan is already in progress! Please wait...");
                 return;
             }
             // Set state to "scanning"
             userStates.put(channelId, "scanning");
 
             String urlToScan = userUrls.get(channelId);
-            telexService.sendMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
+            sendBotMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
 
             // Perform the scan
             String scanId = UUID.randomUUID().toString();
