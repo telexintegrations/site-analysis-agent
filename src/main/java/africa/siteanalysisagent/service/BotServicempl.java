@@ -96,9 +96,7 @@ public class BotServicempl implements BotService {
 
             // Perform the scan
             String scanId = UUID.randomUUID().toString();
-            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId, seoReport -> {
-                sendBotMessage(channelId, "✅ Scan complete! Here's your report:\n\n" + seoReport);
-            });
+            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
 
             // Notify the user that the scan is complete
 
@@ -106,7 +104,6 @@ public class BotServicempl implements BotService {
 //            pendingOptimizations.put(channelId, seoReport);
 
             // Set user state to wait for fix confirmation
-
             userStates.put(channelId, "awaiting_fix_confirmation");
             // Clear the URL state after the scan
             userUrls.remove(channelId);
