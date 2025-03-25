@@ -123,7 +123,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         log.info("📡 Scanning confirmed for '{}'", urlToScan);
 
         try {
-            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId,seoReport -> {});
             userUrls.remove(channelId);
 
             return Map.of(
