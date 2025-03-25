@@ -78,7 +78,6 @@ public class BotServicempl implements BotService {
         sendBotMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
         String scanId = UUID.randomUUID().toString();
         metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
-        userStates.put(channelId, "awaiting_fix_confirmation");
         userUrls.remove(channelId);
     }
 
@@ -93,16 +92,10 @@ public class BotServicempl implements BotService {
     }
 
     private void handleFixConfirmation(String channelId, String userInput) {
-        if (userInput.equalsIgnoreCase("apply_fixes")) {
-            String optimizedMetags = metaAnalysisService.getOptimizedMetags(channelId);
-            sendBotMessage(channelId, "🤖 **Optimized Meta Tags:**\n" + optimizedMetags);
-            userStates.remove(channelId);
-        } else if (userInput.equalsIgnoreCase("ignore")) {
-            sendBotMessage(channelId, "✅ AI fixes ignored. Let me know if you need further assistance.");
-            metaAnalysisService.clearOptimizedMetags(channelId);
-            userStates.remove(channelId);
-        } else {
-            sendBotMessage(channelId, "❌ Invalid input. Please type `apply_fixes` or `ignore`.");
+        if (!userStates.containsKey(channelId) ||
+                !"awaiting_fix_confirmation".equals(userStates.get(channelId))) {
+            sendBotMessage(channelId, "⚠️ No pending optimizations");
+            return;
         }
     }
 
