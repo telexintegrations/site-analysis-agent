@@ -67,7 +67,10 @@ public class BotServicempl implements BotService {
     }
 
     private boolean shouldSkipMessage(String text, String channelId) {
-        return text == null || text.isBlank() || text.equals(lastBotMessages.get(channelId)) || text.equals(lastUserMessages.get(channelId));
+        if (text == null || text.isBlank()) return true;
+
+        String normalizedText = text.toLowerCase().trim();
+        return normalizedText.contains("#bot_message") || normalizedText.equals(lastBotMessages.get(channelId));
     }
 
     @Async
@@ -115,7 +118,8 @@ public class BotServicempl implements BotService {
     }
 
     private void sendBotMessage(String channelId, String message) {
-        lastBotMessages.put(channelId, message);
+        String botTaggedMessage = message +" #bot_message";
+        lastBotMessages.put(channelId, botTaggedMessage);
         telexService.sendMessage(channelId, message).exceptionally(e -> {
             log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
             return null;
