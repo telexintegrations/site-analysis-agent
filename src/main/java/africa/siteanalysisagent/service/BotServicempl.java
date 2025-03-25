@@ -24,17 +24,13 @@ public class BotServicempl implements BotService {
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final Map<String, String> userStates = new HashMap<>();
 
-    // Track last messages to prevent bot echoing
     private final Map<String, String> lastBotMessages = new ConcurrentHashMap<>();
-    private final Map<String, String> lastUserMessages = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 
     @PostConstruct
     public void init() {
-        // Clean up old messages every hour
         cleanupExecutor.scheduleAtFixedRate(() -> {
             lastBotMessages.clear();
-            lastUserMessages.clear();
             log.debug("Cleared message tracking caches");
         }, 1, 1, TimeUnit.HOURS);
     }
@@ -44,13 +40,11 @@ public class BotServicempl implements BotService {
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        // Prevent processing bot-generated messages or repeated echoes
         if (shouldSkipMessage(text, channelId)) {
             return;
         }
 
         text = text.trim();
-        lastUserMessages.put(channelId, text); // Track user message
 
         switch (text.toLowerCase()) {
             case "start" -> sendBotMessage(channelId, "\uD83D\uDC4B Hello! Would you like to scan a URL?\n\uD83D\uDC49 Type 'yes' to continue or 'no' to cancel.");
@@ -67,7 +61,7 @@ public class BotServicempl implements BotService {
     }
 
     private boolean shouldSkipMessage(String text, String channelId) {
-        return text == null || text.isBlank() || text.equals(lastBotMessages.get(channelId)) || text.equals(lastUserMessages.get(channelId));
+        return text == null || text.isBlank() || text.equals(lastBotMessages.get(channelId));
     }
 
     private void handleUrlConfirmation(String channelId) {

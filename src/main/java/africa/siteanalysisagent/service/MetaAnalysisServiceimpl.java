@@ -123,9 +123,8 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         } finally {
             activeScans.put(channelId, false);
         }
-
-
     }
+
 
     @Override
     public String getOptimizedMetags(String channelId) {
@@ -148,8 +147,8 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         }
 
         try {
-            // Block until the report is sent
-            ResponseEntity<String> response = telexService.sendMessage(channelId, reportContent).join();
+            String botTag = "[SEO REPORT] ";  // Tagging bot-generated SEO reports
+            ResponseEntity<String> response = telexService.sendMessage(channelId, botTag + reportContent).join();
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 log.info("✅ Report sent successfully to Telex: {}", response.getBody());
@@ -160,6 +159,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             log.error("❌ Error sending report to Telex: {}", ex.getMessage());
         }
     }
+
 
     public void handleUserInput(String channelId, String userInput, String url) {
         if (userInput.equalsIgnoreCase("apply_fixes")) {
