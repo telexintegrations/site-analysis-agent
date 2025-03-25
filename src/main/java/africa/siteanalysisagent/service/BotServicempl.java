@@ -28,14 +28,11 @@ public class BotServicempl implements BotService {
     private final Map<String, String> lastBotMessages = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 
-
     @PostConstruct
     public void init() {
         // Clean up old messages every hour
         cleanupExecutor.scheduleAtFixedRate(lastBotMessages::clear, 1, 1, TimeUnit.HOURS);
     }
-
-
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
@@ -54,13 +51,6 @@ public class BotServicempl implements BotService {
 
         text = text.trim();
 
-        // Skip if this matches our last sent message (NEW: Added timestamp check)
-        String lastSent = lastBotMessages.get(channelId);
-        if (text.equals(lastSent)) {
-            log.debug("Ignoring duplicate message in channel {}", channelId);
-            return;
-        }
-
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
             handleFixConfirmation(channelId, text);
@@ -68,7 +58,7 @@ public class BotServicempl implements BotService {
         }
 
         if (text.equalsIgnoreCase("start")) {
-            telexService.sendMessage(channelId, "👋 Hello! Would you like to scan a URL?\n👉 Type 'yes' to continue or 'no' to cancel.");
+            sendBotMessage(channelId, "👋 Hello! Would you like to scan a URL?\n👉 Type 'yes' to continue or 'no' to cancel.");
             return;
         }
 
@@ -141,35 +131,23 @@ public class BotServicempl implements BotService {
     }
 
 
-
-
-private boolean isMessageFromBot(String channelId, String text) {
-    String lastBotMessage = lastBotMessages.get(channelId);
-    return text != null && text.equals(lastBotMessage);
-}
-
-private void sendBotMessage(String channelId, String message) {
-    // NEW: Add timestamp to message to make it unique
-    String timestampedMessage = message + " [bot@" + System.currentTimeMillis() + "]";
-    // Store the message before sending
-    lastBotMessages.put(channelId, timestampedMessage);
-
-    // Then send it
-    telexService.sendMessage(channelId, message)
-            .exceptionally(e -> {
-                log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
-                return null;
-            });
-}
-
-
-    private boolean handleStatefulInteraction(String text, String channelId) {
-        if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
-            handleFixConfirmation(channelId, text);
-            return true;
-        }
-        return false;
+    private boolean isMessageFromBot(String channelId, String text) {
+        String lastBotMessage = lastBotMessages.get(channelId);
+        return text != null && text.equals(lastBotMessage);
     }
+
+    private void sendBotMessage(String channelId, String message) {
+        // Store the message before sending
+        lastBotMessages.put(channelId, message);
+
+        // Then send it
+        telexService.sendMessage(channelId, message)
+                .exceptionally(e -> {
+                    log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
+                    return null;
+                });
+    }
+
 
 
     private void handleFixConfirmation(String channelId, String userInput) {
@@ -202,16 +180,6 @@ private void sendBotMessage(String channelId, String message) {
         }
     }
 
-    private void sendFixPrompt(String channelId) {
-        try {
-//            telexService.sendInteractiveMessage(channelId,
-//                    "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip.",
-//                    List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore")));
-        } catch (Exception e) {
-            log.warn("⚠️ Failed to send interactive message. Sending plain text as fallback.");
-            telexService.sendMessage(channelId, "Would you like to apply AI-optimized fixes? Type `apply_fixes` to apply or `ignore` to skip.");
-        }
-    }
 
     private boolean isValidUrl(String text) {
         return text.matches("^(https?|ftp)://[^\\s/$.?#].[^\\s]*$");
