@@ -54,6 +54,12 @@ public class BotServicempl implements BotService {
 
         text = text.trim();
 
+        // Skip if this matches our last sent message (NEW: Added timestamp check)
+        String lastSent = lastBotMessages.get(channelId);
+        if (text.equals(lastSent)) {
+            log.debug("Ignoring duplicate message in channel {}", channelId);
+            return;
+        }
 
         // If the user is in "awaiting_fix_confirmation" state, handle fix confirmation
         if ("awaiting_fix_confirmation".equalsIgnoreCase(userStates.get(channelId))) {
@@ -143,8 +149,10 @@ private boolean isMessageFromBot(String channelId, String text) {
 }
 
 private void sendBotMessage(String channelId, String message) {
+    // NEW: Add timestamp to message to make it unique
+    String timestampedMessage = message + " [bot@" + System.currentTimeMillis() + "]";
     // Store the message before sending
-    lastBotMessages.put(channelId, message);
+    lastBotMessages.put(channelId, timestampedMessage);
 
     // Then send it
     telexService.sendMessage(channelId, message)
