@@ -71,8 +71,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "required": true
                     }
                 ],
-                "target_url": "",
-                "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape"
+                "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
+                "tick_url": ""
                 }
             }
             """;
