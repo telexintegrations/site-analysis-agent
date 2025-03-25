@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -51,7 +52,8 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     }
 
     @Override
-    public void generateSeoReport(String url, String scanId, String channelId) {
+    public void generateSeoReport(String url, String scanId, String channelId, Consumer<String> callback) {
+
         log.info("Starting SEO analysis for URL: {}", url);
 
         if (activeScans.getOrDefault(channelId, false)) {
@@ -104,6 +106,9 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
             sendReportAfterTelex(scanId, channelId, "📊 **Final SEO Score Report**", fullReport);
+            // Execute the callback with the final report
+            callback.accept(fullReport);
+
 
             pendingOptimizations.put(channelId, optimizedMetags);
             log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
