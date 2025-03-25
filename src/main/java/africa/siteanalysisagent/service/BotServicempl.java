@@ -27,6 +27,9 @@ public class BotServicempl implements BotService {
     private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
 
+    private static final String IDENTIFIER = "📝 #TelexSite"; // Identifier to detect bot-echoed messages
+
+
     @PostConstruct
     public void init() {
         cleanupExecutor.scheduleAtFixedRate(() -> {
@@ -70,7 +73,14 @@ public class BotServicempl implements BotService {
         if (text == null || text.isBlank()) return true;
 
         String normalizedText = text.toLowerCase().trim();
-        return normalizedText.contains("#bot_message") || normalizedText.equals(lastBotMessages.get(channelId));
+
+        // Ignore messages containing the identifier (which means Telex echoed them)
+        if (normalizedText.contains(IDENTIFIER.toLowerCase())) {
+            log.debug("Skipping Telex-echoed message in channel {}", channelId);
+            return true;
+        }
+        return normalizedText.equals(lastBotMessages.get(channelId)) || normalizedText.equals(lastUserMessages.get(channelId));
+
     }
 
     @Async
@@ -118,9 +128,14 @@ public class BotServicempl implements BotService {
     }
 
     private void sendBotMessage(String channelId, String message) {
-        String botTaggedMessage = message +" #bot_message";
-        lastBotMessages.put(channelId, botTaggedMessage);
-        telexService.sendMessage(channelId, message).exceptionally(e -> {
+        lastBotMessages.put(channelId, message);
+
+        telexService.sendMessage(channelId, message).thenApply(response -> {
+            // When Telex sends back this message, **it should include the identifier**
+            String taggedMessage = message + "\n\n" + IDENTIFIER;
+            lastBotMessages.put(channelId, taggedMessage); // Track it so the bot ignores it later
+            return null;
+        }).exceptionally(e -> {
             log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
             return null;
         });
