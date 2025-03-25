@@ -27,31 +27,24 @@ public class BotServicempl implements BotService {
     private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
 
-    private static final String IDENTIFIER = "📝 #TelexSite"; // Identifier to detect bot-echoed messages
+    // Bot message identifier - added at the end of ALL bot messages
+    private static final String BOT_IDENTIFIER = "#bot_message";
 
-
-    @PostConstruct
-    public void init() {
-        cleanupExecutor.scheduleAtFixedRate(() -> {
-            lastBotMessages.clear();
-            lastUserMessages.clear();
-            log.debug("Cleared message tracking caches");
-        }, 1, 1, TimeUnit.HOURS);
-    }
 
     @Override
     public void handleEvent(TelexUserRequest userRequest) {
         String text = userRequest.text();
         String channelId = userRequest.channelId();
 
-        if (shouldSkipMessage(text, channelId)) {
+        // Skip processing if:
+        // 1. Message is empty/null
+        // 2. Message contains our identifier (means it's from the bot)
+        if (text == null || text.isBlank() || text.contains(BOT_IDENTIFIER)) {
+            log.debug("Skipping bot message or empty input");
             return;
         }
 
-        final String userText = text.trim();
-        lastUserMessages.put(channelId, userText);
-
-        asyncExecutor.submit(() -> processUserInput(channelId, userText));
+        asyncExecutor.submit(() -> processUserInput(channelId, text.trim()));
     }
 
     private void processUserInput(String channelId, String text) {
@@ -69,19 +62,6 @@ public class BotServicempl implements BotService {
         }
     }
 
-    private boolean shouldSkipMessage(String text, String channelId) {
-        if (text == null || text.isBlank()) return true;
-
-        String normalizedText = text.toLowerCase().trim();
-
-        // Ignore messages containing the identifier (which means Telex echoed them)
-        if (normalizedText.contains(IDENTIFIER.toLowerCase())) {
-            log.debug("Skipping Telex-echoed message in channel {}", channelId);
-            return true;
-        }
-        return normalizedText.equals(lastBotMessages.get(channelId)) || normalizedText.equals(lastUserMessages.get(channelId));
-
-    }
 
     @Async
     private void handleUrlConfirmation(String channelId) {
@@ -122,52 +102,45 @@ public class BotServicempl implements BotService {
             sendBotMessage(channelId, "✅ AI fixes ignored. Let me know if you need further assistance.");
             metaAnalysisService.clearOptimizedMetags(channelId);
             userStates.remove(channelId);
-        } else {
-            sendBotMessage(channelId, "❌ Invalid input. Please type `apply_fixes` or `ignore`.");
         }
     }
 
     private void sendBotMessage(String channelId, String message) {
-        lastBotMessages.put(channelId, message);
-
-        telexService.sendMessage(channelId, message).thenApply(response -> {
-            // When Telex sends back this message, **it should include the identifier**
-            String taggedMessage = message + "\n\n" + IDENTIFIER;
-            lastBotMessages.put(channelId, taggedMessage); // Track it so the bot ignores it later
-            return null;
-        }).exceptionally(e -> {
+        String botTaggedMessage = message + " " + BOT_IDENTIFIER;
+        telexService.sendMessage(channelId, botTaggedMessage).exceptionally(e -> {
             log.error("Failed to send message to channel {}: {}", channelId, e.getMessage());
             return null;
         });
     }
-    private void applyOptimizedMetaTags(String channelId) {
-        if (pendingOptimizations.containsKey(channelId)) {
-            String optimizedTags = pendingOptimizations.remove(channelId);
-            telexService.sendMessage(channelId, "✅ AI-optimized meta tags have been applied successfully!\n\n" + optimizedTags);
-        } else {
-            telexService.sendMessage(channelId, "⚠️ No AI-optimized meta tags found! Please run a scan first.");
-        }
-    }
 
+//    private void applyOptimizedMetaTags(String channelId) {
+//        if (pendingOptimizations.containsKey(channelId)) {
+//            String optimizedTags = pendingOptimizations.remove(channelId);
+//            telexService.sendMessage(channelId, "✅ AI-optimized meta tags have been applied successfully!\n\n" + optimizedTags);
+//        } else {
+//            telexService.sendMessage(channelId, "⚠️ No AI-optimized meta tags found! Please run a scan first.");
+//        }
+//    }
+//
 
     private boolean isValidUrl(String text) {
         return text.matches("^(https?|ftp)://[^\\s/$.?#].[^\\s]*$");
     }
-
-
-    private void sendWelcomeMessage(String channelId) {
-        String message = "Welcome! Would you like to scan your URL?";
-        List<Button> buttons = List.of(new Button("Yes", "yes"), new Button("No", "no"));
-        telexService.sendInteractiveMessage(channelId, message, buttons);
-    }
-
-    private void sendUrlPrompt(String channelId) {
-        String message = "Please enter the URL you want to scan:";
-        telexService.sendMessage(channelId, message);
-    }
-
-    private void sendGoodByeMessage(String channelId) {
-        String message = "Goodbye! Let me know if you want help later.";
-        telexService.sendMessage(channelId, message);
-    }
+//
+//
+//    private void sendWelcomeMessage(String channelId) {
+//        String message = "Welcome! Would you like to scan your URL?";
+//        List<Button> buttons = List.of(new Button("Yes", "yes"), new Button("No", "no"));
+//        telexService.sendInteractiveMessage(channelId, message, buttons);
+//    }
+//
+//    private void sendUrlPrompt(String channelId) {
+//        String message = "Please enter the URL you want to scan:";
+//        telexService.sendMessage(channelId, message);
+//    }
+//
+//    private void sendGoodByeMessage(String channelId) {
+//        String message = "Goodbye! Let me know if you want help later.";
+//        telexService.sendMessage(channelId, message);
+//    }
 }
