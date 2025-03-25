@@ -45,7 +45,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private void sendOrderedProgress(String scanId, String channelId, int progress, String message) {
 
             try {
-                Thread.sleep(500); // Delay to maintain message order
+                Thread.sleep(1000); // Delay to maintain message order
                 // Only progress updates get the identifier
                 String taggedMessage = message + " " + BOT_IDENTIFIER;
                 progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
@@ -68,11 +68,11 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             return;
         }
 
+        try {
 
         activeScans.put(channelId, true);
 
-        CompletableFuture.runAsync(() -> {
-            try {
+
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting SEO Meta Tag Scan...");
                 Document document = scrape(url);
                 sendOrderedProgress(scanId, channelId, 40, "🏷️ Extracting Meta Tags...");
@@ -118,7 +118,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 
                 String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
-                telexService.sendMessage(channelId, fullReport).join();
+                telexService.sendMessage(channelId, fullReport +" "+ BOT_IDENTIFIER).join();
                 sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
 //             Send the Final SEO Score Report to Telex
@@ -141,7 +141,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             } finally {
                 activeScans.put(channelId, false);
             }
-        }, asyncExecutor);
+
     }
 
 
