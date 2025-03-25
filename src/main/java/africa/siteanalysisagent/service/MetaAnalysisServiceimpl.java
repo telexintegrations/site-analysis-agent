@@ -16,6 +16,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
@@ -29,26 +32,26 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private final GeminiService geminiService;
     private final ApplicationEventPublisher eventPublisher;
     private final Map<String, String> pendingOptimizations = new HashMap<>();
+    private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
+
 
 
     private static final int TIMEOUT = 10000; // 10 seconds
 
     private final Map<String, Boolean> activeScans = new HashMap<>(); // Tracks active scans per channel
-    private final Map<String, Integer> invalidInputCounts = new HashMap<>(); // Tracks invalid inputs per channel
-
-    // Add this constant to match your bot's identifier
     private static final String BOT_IDENTIFIER = "#bot_message";
 
 
     private void sendOrderedProgress(String scanId, String channelId, int progress, String message) {
-        try {
-            Thread.sleep(1000); // Delay to maintain message order
-            // Only progress updates get the identifier
-            String taggedMessage = message + " " + BOT_IDENTIFIER;
-            progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+
+            try {
+                Thread.sleep(500); // Delay to maintain message order
+                // Only progress updates get the identifier
+                String taggedMessage = message + " " + BOT_IDENTIFIER;
+                progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
     }
 
     @Override
@@ -65,78 +68,80 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             return;
         }
 
-        try {
-            activeScans.put(channelId, true);
 
-            sendOrderedProgress(scanId, channelId, 10, "🔄 Starting SEO Meta Tag Scan...");
-            Document document = scrape(url);
-            sendOrderedProgress(scanId, channelId, 40, "🏷️ Extracting Meta Tags...");
-            MetaTagExtractor metaTagExtractor = new MetaTagExtractor(document);
-            Map<String, List<String>> metaTags = metaTagExtractor.extractMetaTags();
-            sendOrderedProgress(scanId, channelId, 80, "📊 Generating SEO Meta Tag Report...");
-            String seoMetaTagReport = generateMetaTagReport(url, metaTags);
-            sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!");
+        activeScans.put(channelId, true);
 
-            // Send the SEO Meta Tag Report to Telex
-            sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport);
+        CompletableFuture.runAsync(() -> {
+            try {
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting SEO Meta Tag Scan...");
+                Document document = scrape(url);
+                sendOrderedProgress(scanId, channelId, 40, "🏷️ Extracting Meta Tags...");
+                MetaTagExtractor metaTagExtractor = new MetaTagExtractor(document);
+                Map<String, List<String>> metaTags = metaTagExtractor.extractMetaTags();
+                sendOrderedProgress(scanId, channelId, 80, "📊 Generating SEO Meta Tag Report...");
+                String seoMetaTagReport = generateMetaTagReport(url, metaTags);
+                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!");
 
-            sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...");
-            sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...");
-            CategorizedLink categorizedLinks = linkCrawlAndCategory.categorizedLinkDto(document);
-            sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...");
-            String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
-            sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!");
+                // Send the SEO Meta Tag Report to Telex
+                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport);
 
-            // Send the Categorized Link Report to Telex
-            sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport);
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...");
+                sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...");
+                CategorizedLink categorizedLinks = linkCrawlAndCategory.categorizedLinkDto(document);
+                sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...");
+                String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
+                sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!");
 
-            sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...");
-            linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
-            sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...");
-            String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
-            sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!");
+                // Send the Categorized Link Report to Telex
+                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport);
 
-            // Send the Broken & Duplicate Links Report to Telex
-            sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport);
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...");
+                linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
+                sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...");
+                String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
+                sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!");
 
-            sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...");
-            Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
+                // Send the Broken & Duplicate Links Report to Telex
+                sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport);
 
-// Add intermediate progress updates
-            sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...");
-            sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...");
-            sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...");
+                sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...");
+                Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
+                sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...");
+                sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...");
+                sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...");
 
-            int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
-            String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions", "No recommendations found.");
-            String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags", "No optimized meta tags found.");
+                int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
+                String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions", "No recommendations found.");
+                String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags", "No optimized meta tags found.");
 
-            sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...");
+                sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...");
 
-            String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
+                String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
-            sendReportAfterTelex(scanId, channelId, "📊 **Final SEO Score Report**", fullReport);
-            sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
-
-            pendingOptimizations.put(channelId, optimizedMetags);
-            log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
-
+                telexService.sendMessage(channelId, fullReport).join();
+                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
 //             Send the Final SEO Score Report to Telex
 
-            telexService.sendInteractiveMessage(channelId,
-                    "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
-                    List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore")));
+                telexService.sendInteractiveMessage(channelId,
+                        "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
+                        List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore"))).join();
+
+                pendingOptimizations.put(channelId, optimizedMetags);
+                log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
+
+                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
 
-        } catch (IOException e) {
-            log.error("❌ Error during SEO analysis: {}", e.getMessage(), e);
-            sendOrderedProgress(scanId, channelId, 100, "❌ Scan Failed: " + e.getMessage()+ " " + BOT_IDENTIFIER);
-            telexService.sendMessage(channelId, "❌ Error generating SEO report: " + e.getMessage()+ " " + BOT_IDENTIFIER);
+            } catch (IOException e) {
+                log.error("❌ Error during SEO analysis: {}", e.getMessage(), e);
+                sendOrderedProgress(scanId, channelId, 100, "❌ Scan Failed: " + e.getMessage() + " " + BOT_IDENTIFIER);
+                telexService.sendMessage(channelId, "❌ Error generating SEO report: " + e.getMessage() + " " + BOT_IDENTIFIER);
 
-        } finally {
-            activeScans.put(channelId, false);
-        }
+            } finally {
+                activeScans.put(channelId, false);
+            }
+        }, asyncExecutor);
     }
 
 
