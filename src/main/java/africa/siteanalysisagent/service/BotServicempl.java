@@ -5,13 +5,11 @@ import africa.siteanalysisagent.dto.Button;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Service
 @Slf4j
@@ -20,17 +18,20 @@ public class BotServicempl implements BotService {
 
     private final TelexService telexService;
     private final MetaAnalysisService metaAnalysisService;
-    private final Map<String, String> userUrls = new HashMap<>();
-    private final Map<String, String> pendingOptimizations = new HashMap<>();
-    private final Map<String, String> userStates = new HashMap<>();
+    private final Map<String, String> userUrls = new ConcurrentHashMap<>();
+    private final Map<String, String> pendingOptimizations = new ConcurrentHashMap<>();
+    private final Map<String, String> userStates = new ConcurrentHashMap<>();
 
     private final Map<String, String> lastBotMessages = new ConcurrentHashMap<>();
+    private final Map<String, String> lastUserMessages = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
 
     @PostConstruct
     public void init() {
         cleanupExecutor.scheduleAtFixedRate(() -> {
             lastBotMessages.clear();
+            lastUserMessages.clear();
             log.debug("Cleared message tracking caches");
         }, 1, 1, TimeUnit.HOURS);
     }
@@ -44,8 +45,13 @@ public class BotServicempl implements BotService {
             return;
         }
 
-        text = text.trim();
+        final String userText = text.trim();
+        lastUserMessages.put(channelId, userText);
 
+        asyncExecutor.submit(() -> processUserInput(channelId, userText));
+    }
+
+    private void processUserInput(String channelId, String text) {
         switch (text.toLowerCase()) {
             case "start" -> sendBotMessage(channelId, "\uD83D\uDC4B Hello! Would you like to scan a URL?\n\uD83D\uDC49 Type 'yes' to continue or 'no' to cancel.");
             case "yes" -> sendBotMessage(channelId, "✅ Please enter the URL you want to scan.");
@@ -54,16 +60,17 @@ public class BotServicempl implements BotService {
                 userUrls.remove(channelId);
                 sendBotMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
             }
-            case "confirm" -> handleUrlConfirmation(channelId);
-            case "apply_fixes", "ignore" -> handleFixConfirmation(channelId, text);
+            case "confirm" -> asyncExecutor.submit(() -> handleUrlConfirmation(channelId));
+            case "apply_fixes", "ignore" -> asyncExecutor.submit(() -> handleFixConfirmation(channelId, text));
             default -> handleDefaultInput(channelId, text);
         }
     }
 
     private boolean shouldSkipMessage(String text, String channelId) {
-        return text == null || text.isBlank() || text.equals(lastBotMessages.get(channelId));
+        return text == null || text.isBlank() || text.equals(lastBotMessages.get(channelId)) || text.equals(lastUserMessages.get(channelId));
     }
 
+    @Async
     private void handleUrlConfirmation(String channelId) {
         if (!userUrls.containsKey(channelId)) {
             sendBotMessage(channelId, "⚠️ No URL found! Please enter a valid URL first.");
@@ -77,7 +84,8 @@ public class BotServicempl implements BotService {
         String urlToScan = userUrls.get(channelId);
         sendBotMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
         String scanId = UUID.randomUUID().toString();
-        metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+        asyncExecutor.submit(() -> metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId));
+        userStates.put(channelId, "awaiting_fix_confirmation");
         userUrls.remove(channelId);
     }
 
@@ -91,11 +99,18 @@ public class BotServicempl implements BotService {
         }
     }
 
+    @Async
     private void handleFixConfirmation(String channelId, String userInput) {
-        if (!userStates.containsKey(channelId) ||
-                !"awaiting_fix_confirmation".equals(userStates.get(channelId))) {
-            sendBotMessage(channelId, "⚠️ No pending optimizations");
-            return;
+        if (userInput.equalsIgnoreCase("apply_fixes")) {
+            String optimizedMetags = metaAnalysisService.getOptimizedMetags(channelId);
+            sendBotMessage(channelId, "🤖 **Optimized Meta Tags:**\n" + optimizedMetags);
+            userStates.remove(channelId);
+        } else if (userInput.equalsIgnoreCase("ignore")) {
+            sendBotMessage(channelId, "✅ AI fixes ignored. Let me know if you need further assistance.");
+            metaAnalysisService.clearOptimizedMetags(channelId);
+            userStates.remove(channelId);
+        } else {
+            sendBotMessage(channelId, "❌ Invalid input. Please type `apply_fixes` or `ignore`.");
         }
     }
 
