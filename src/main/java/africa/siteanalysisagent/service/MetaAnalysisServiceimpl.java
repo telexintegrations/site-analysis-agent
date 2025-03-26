@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -26,7 +25,7 @@ import java.util.concurrent.Executors;
 public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 
     private final TelexService telexService;
-    private final ProgressTracker progressTracker;
+    private final ProgressTrackerImpl progressTracker;
     private final LinkCrawlAndCategorizationService linkCrawlAndCategory;
     private final BrokenLinkAndDuplicateTracker brokenLinkAndDuplicateTracker;
     private final GeminiService geminiService;
@@ -119,9 +118,9 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
                 telexService.sendMessage(channelId, fullReport +" "+ BOT_IDENTIFIER).join();
-                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
-
 //             Send the Final SEO Score Report to Telex
+
+            sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
                 telexService.sendInteractiveMessage(channelId,
                         "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
@@ -130,7 +129,6 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 pendingOptimizations.put(channelId, optimizedMetags);
                 log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
 
-                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
 
 
             } catch (IOException e) {

@@ -23,8 +23,6 @@ public class BotServicempl implements BotService {
     private final Map<String, String> userStates = new ConcurrentHashMap<>();
 
 
-    private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
-
     // Bot message identifier - added at the end of ALL bot messages
     private static final String BOT_IDENTIFIER = "#bot_message";
 
@@ -42,7 +40,7 @@ public class BotServicempl implements BotService {
             return;
         }
 
-        asyncExecutor.submit(() -> processUserInput(channelId, text.trim()));
+         processUserInput(channelId, text.trim());
     }
 
     private void processUserInput(String channelId, String text) {
@@ -54,8 +52,8 @@ public class BotServicempl implements BotService {
                 userUrls.remove(channelId);
                 sendBotMessage(channelId, "🚫 URL entry canceled. Please enter a new URL.");
             }
-            case "confirm" -> asyncExecutor.submit(() -> handleUrlConfirmation(channelId));
-            case "apply_fixes", "ignore" -> asyncExecutor.submit(() -> handleFixConfirmation(channelId, text));
+            case "confirm" -> handleUrlConfirmation(channelId);
+            case "apply_fixes", "ignore" -> handleFixConfirmation(channelId, text);
             default -> handleDefaultInput(channelId, text);
         }
     }
@@ -75,7 +73,7 @@ public class BotServicempl implements BotService {
         String urlToScan = userUrls.get(channelId);
         sendBotMessage(channelId, "🔍 Scanning: " + urlToScan + "...\n⏳ Please wait...");
         String scanId = UUID.randomUUID().toString();
-        asyncExecutor.submit(() -> metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId));
+        metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
         userStates.put(channelId, "awaiting_fix_confirmation");
         userUrls.remove(channelId);
     }
