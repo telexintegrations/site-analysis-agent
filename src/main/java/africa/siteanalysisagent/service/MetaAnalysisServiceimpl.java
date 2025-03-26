@@ -49,7 +49,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         // Create new future that chains after the last one
         CompletableFuture<Void> newFuture = lastFuture.thenCompose(ignored -> {
             try {
-                Thread.sleep(1000); // Maintain delay between messages
+                Thread.sleep(200); // Maintain delay between messages
                 String taggedMessage = message + " " + BOT_IDENTIFIER;
                 return progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
             } catch (InterruptedException e) {
@@ -108,13 +108,20 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...").join();
-                linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
+                CompletableFuture<Void> brokenLinksFuture = CompletableFuture.runAsync(() -> {
+                    linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
+                }, asyncExecutor);
 
-                sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...").join();
-                String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
-
-                sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!").join();
-                sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport).join();
+// Wait for broken links detection to complete before sending progress updates
+                brokenLinksFuture.thenCompose(ignored ->
+                        sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...")
+                ).thenCompose(ignored -> {
+                    String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
+                    return sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**",
+                            brokenAndDuplicateLinksReport);
+                }).thenCompose(ignored ->
+                        sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!")
+                ).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...").join();
                 Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
