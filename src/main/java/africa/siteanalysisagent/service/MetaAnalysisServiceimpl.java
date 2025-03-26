@@ -95,7 +95,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 String seoMetaTagReport = generateMetaTagReport(url, metaTags);
 
                 sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!").join();
-                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport).join();
+                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport + " "+ BOT_IDENTIFIER).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...").join();
                 sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...").join();
@@ -105,7 +105,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
 
                 sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!").join();
-                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport).join();
+                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport + " "+ BOT_IDENTIFIER).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...").join();
                 CompletableFuture<Void> brokenLinksFuture = CompletableFuture.runAsync(() -> {
@@ -118,7 +118,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 ).thenCompose(ignored -> {
                     String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
                     return sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**",
-                            brokenAndDuplicateLinksReport);
+                            brokenAndDuplicateLinksReport +" " + BOT_IDENTIFIER);
                 }).thenCompose(ignored ->
                         sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!")
                 ).join();
