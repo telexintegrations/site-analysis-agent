@@ -6,25 +6,22 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@EnableAsync // Enable asynchronous execution
 public class TelexServiceImpl implements TelexService {
 
     private final RestTemplate restTemplate;
-    private final Map<String, String> webhookCache = new ConcurrentHashMap<>();
-
-    // Message queue per channel with strict ordering
-    private final Map<String, CompletableFuture<Void>> channelQueues = new ConcurrentHashMap<>();
-    private final Executor telexExecutor = Executors.newSingleThreadExecutor();
+    private final Map<String, String> webhookCache = new HashMap<>(); // Cache webhook URLs per channel
 
     public TelexServiceImpl() {
         this.restTemplate = createRestTemplate();
@@ -38,109 +35,114 @@ public class TelexServiceImpl implements TelexService {
     }
 
     @Override
+    @Async // Mark this method as asynchronous
     public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message) {
-        return enqueueTelexOperation(channelId, () -> {
-            if (message == null || message.isEmpty()) {
-                log.error("❌ Message is empty.");
-                return CompletableFuture.completedFuture(
-                        ResponseEntity.badRequest().body("Message is empty.")
-                );
-            }
+        String webhookUrl = getWebhookUrl(channelId);
 
-            return prepareAndSend(channelId, createPayload(message, null));
-        });
-    }
+        if (webhookUrl == null) {
+            log.error("❌ No webhook URL found for channel '{}'.", channelId);
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
+        }
 
-    @Override
-    public CompletableFuture<ResponseEntity<String>> sendInteractiveMessage(
-            String channelId, String message, List<Button> buttons
-    ) {
-        return enqueueTelexOperation(channelId, () -> {
-            Map<String, Object> payload = createPayload(message, buttons);
-            return prepareAndSend(channelId, payload);
-        });
-    }
+        if (message == null || message.isEmpty()) {
+            log.error("❌ Message is empty.");
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Message is empty."));
+        }
 
-    @Override
-    public CompletableFuture<ResponseEntity<String>> notifyTelex(String message, String channelId) {
-        return enqueueTelexOperation(channelId, () -> prepareAndSend(channelId, createPayload(message, null)));
-    }
-
-    // ========== Core Sequencing Logic ========== //
-
-    private CompletableFuture<ResponseEntity<String>> enqueueTelexOperation(
-            String channelId,
-            Supplier<CompletableFuture<ResponseEntity<String>>> operation
-    ) {
-        CompletableFuture<ResponseEntity<String>> resultFuture = new CompletableFuture<>();
-
-        // Get or create queue for this channel
-        CompletableFuture<Void> lastOperation = channelQueues.getOrDefault(
-                channelId, CompletableFuture.completedFuture(null)
-        );
-
-        // Chain the new operation
-        CompletableFuture<Void> newOperation = lastOperation;
-
-        // Update the channel queue
-        channelQueues.put(channelId, newOperation);
-        return resultFuture;
-    }
-
-    // ========== Helper Methods ========== //
-
-    private CompletableFuture<ResponseEntity<String>> prepareAndSend(
-            String channelId,
-            Map<String, Object> payload
-    ) {
-        return CompletableFuture.supplyAsync(() -> {
-            String webhookUrl = getWebhookUrl(channelId);
-            if (webhookUrl == null) {
-                log.error("❌ No webhook URL for channel {}", channelId);
-                return ResponseEntity.badRequest().body("Webhook URL not found");
-            }
-            return sendToTelex(webhookUrl, payload);
-        }, telexExecutor);
-    }
-
-    private Map<String, Object> createPayload(String message, List<Button> buttons) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event_name", "web_scraper");
         payload.put("username", "site-analyzer");
         payload.put("status", "success");
         payload.put("message", message);
+        payload.put("channel_id", channelId);
 
-        if (buttons != null && !buttons.isEmpty()) {
-            List<Map<String, String>> buttonList = new ArrayList<>();
-            buttons.forEach(btn -> buttonList.add(Map.of(
-                    "text", btn.getText(),
-                    "value", btn.getValue()
-            )));
-            payload.put("buttons", buttonList);
-        }
-        return payload;
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Thread.sleep(1000); // 1-second delay between messages to avoid rate limits
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return sendToTelex(webhookUrl,payload);
+        });
     }
 
-    // ========== Existing Methods (Unchanged) ========== //
+    @Override
+    @Async // Mark this method as asynchronous
+    public CompletableFuture<ResponseEntity<String>> sendInteractiveMessage(String channelId, String message, List<Button> buttons) {
+        String webhookUrl = getWebhookUrl(channelId);
+
+        if (webhookUrl == null) {
+            log.error("❌ No webhook URL found for channel '{}'.", channelId);
+            return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
+        }
+
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event_name", "web_scraper");
+        payload.put("username", "site-analyzer");
+        payload.put("status", "success");
+        payload.put("message", message);
+        payload.put("channel_id", channelId);
+
+        // Properly format buttons
+        List<Map<String, String>> buttonList = new ArrayList<>();
+        for (Button button : buttons) {
+            Map<String, String> btn = new HashMap<>();
+            btn.put("text", button.getText());
+            btn.put("value", button.getValue());
+            buttonList.add(btn);
+        }
+        payload.put("buttons", buttonList);
+
+        return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl,payload));
+    }
 
     @Override
+    @Async // Mark this method as asynchronous
+    public CompletableFuture<ResponseEntity<String>> notifyTelex(String message, String channelId) {
+        try {
+            String webhookUrl = getWebhookUrl(channelId); // Fetch dynamic webhook URL
+
+            if (webhookUrl == null || webhookUrl.isBlank()) {
+                log.error("❌ No webhook URL found for channel '{}'.", channelId);
+                return CompletableFuture.completedFuture(ResponseEntity.badRequest().body("Webhook URL not found."));
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("event_name", "web_scraper");
+            payload.put("username", "site-analyzer");
+            payload.put("status", "success");
+            payload.put("message", message);
+            payload.put("channel_id", channelId);
+
+            return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl,payload));
+        } catch (Exception e) {
+            log.error("Failed to send Telex notification: {}", e.getMessage(), e);
+            return CompletableFuture.completedFuture(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to send Telex notification."));
+        }
+    }
+
     public void updateWebhookUrl(String channelId, List<Setting> settings) {
         String webhookUrl = settings.stream()
                 .filter(setting -> "webhook_url".equals(setting.label()))
                 .map(Setting::defaultValue)
                 .filter(url -> url != null && !url.isBlank())
                 .findFirst()
-                .orElse(null);
+                .orElse(null); // Don't fall back to hardcoded URL
 
-        if (webhookUrl != null && webhookUrl.startsWith("http")) {
+        if (webhookUrl != null) {
+            // Validate URL format
+            if (!webhookUrl.startsWith("http")) {
+                log.error("❌ Invalid webhook URL format for channel {}: {}", channelId, webhookUrl);
+                return;
+            }
             webhookCache.put(channelId, webhookUrl);
-            log.info("✅ Updated webhook URL for channel '{}'", channelId);
+            log.info("✅ Updated webhook URL for channel '{}': {}", channelId, webhookUrl);
         } else {
-            log.error("❌ Invalid webhook URL for channel {}", channelId);
+            log.error("❌ No valid webhook URL found in settings for channel {}", channelId);
         }
     }
 
-    private ResponseEntity<String> sendToTelex(String webhookUrl, Map<String, Object> payload) {
+    private ResponseEntity<String> sendToTelex(String webhookUrl,Map<String, Object> payload) {
 
         // Validate URL first
         if (webhookUrl == null || !webhookUrl.startsWith("http")) {
@@ -179,10 +181,12 @@ public class TelexServiceImpl implements TelexService {
         }
 
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("Failed after multiple retries");
-
     }
+
 
     private String getWebhookUrl(String channelId) {
-        return webhookCache.get(channelId);
+        return webhookCache.getOrDefault(channelId, ""); // Return cached webhook if available
     }
+
+
 }
