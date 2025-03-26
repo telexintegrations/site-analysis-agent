@@ -95,21 +95,26 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 String seoMetaTagReport = generateMetaTagReport(url, metaTags);
 
                 sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!").join();
-                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport + " "+ BOT_IDENTIFIER).join();
+                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport).join();
 
+                // 2. Categorized Links Analysis
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...").join();
-                sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...").join();
-                CategorizedLink categorizedLinks = linkCrawlAndCategory.categorizedLinkDto(document);
 
-                sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...").join();
-                String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
+                CompletableFuture<CategorizedLink> linksFuture = CompletableFuture.supplyAsync(() -> {
+                    sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...").join();
+                    return linkCrawlAndCategory.categorizedLinkDto(document);
+                }, asyncExecutor);
 
-                sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!").join();
-                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport + " "+ BOT_IDENTIFIER).join();
+                linksFuture.thenCompose(categorizedLinks -> {
+                    sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...").join();
+                    String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
+                    return sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!")
+                            .thenCompose(ignored -> sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport));
+                }).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...").join();
                 CompletableFuture<Void> brokenLinksFuture = CompletableFuture.runAsync(() -> {
-                    linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
+                    linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, linksFuture.join());
                 }, asyncExecutor);
 
 // Wait for broken links detection to complete before sending progress updates
@@ -118,35 +123,44 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 ).thenCompose(ignored -> {
                     String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
                     return sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**",
-                            brokenAndDuplicateLinksReport +" " + BOT_IDENTIFIER);
+                            brokenAndDuplicateLinksReport);
                 }).thenCompose(ignored ->
                         sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!")
                 ).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...").join();
-                Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
+                CompletableFuture<Map<String, Object>> analysisFuture = CompletableFuture.supplyAsync(() -> {
+                    sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...").join();
+                    sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...").join();
+                    sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...").join();
+                    return geminiService.analyzeSeo(url, metaTags, linksFuture.join());
+                }, asyncExecutor);
 
-                sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...").join();
-                sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...").join();
-                sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...").join();
+                analysisFuture.thenCompose(analysisResult -> {
+                    int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
+                    String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions",
+                            "No recommendations found.");
+                    String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags",
+                            "No optimized meta tags found.");
 
-                int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
-                String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions", "No recommendations found.");
-                String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags", "No optimized meta tags found.");
+                    sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...").join();
 
-                sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...").join();
+                    String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n" +
+                            "💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
-                String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
-                telexService.sendMessage(channelId, fullReport + " " + BOT_IDENTIFIER).join();
-
-                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!").join();
-
-                telexService.sendInteractiveMessage(channelId,
-                        "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
-                        List.of(new Button("✅ Apply Fixes", "apply_fixes"), new Button("❌ Ignore", "ignore"))).join();
-
-                pendingOptimizations.put(channelId, optimizedMetags);
-                log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
+                    return telexService.sendMessage(channelId, fullReport + " " + BOT_IDENTIFIER)
+                            .thenCompose(ignored -> sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!"))
+                            .thenCompose(ignored -> {
+                                telexService.sendInteractiveMessage(channelId,
+                                                "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n" +
+                                                        "👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
+                                                List.of(new Button("✅ Apply Fixes", "apply_fixes"),
+                                                        new Button("❌ Ignore", "ignore")))
+                                        .join();
+                                pendingOptimizations.put(channelId, optimizedMetags);
+                                return CompletableFuture.completedFuture(null);
+                            });
+                }).join();
 
             } catch (IOException e) {
                 log.error("❌ Error during SEO analysis: {}", e.getMessage(), e);
@@ -157,6 +171,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 messageSequences.remove(channelId);
             }
         });
+
     }
 
     private CompletableFuture<Void> sendReportAfterTelex(String scanId, String channelId, String title, String reportContent) {
