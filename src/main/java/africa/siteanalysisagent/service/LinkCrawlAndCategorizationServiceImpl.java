@@ -7,6 +7,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -21,7 +22,7 @@ public class LinkCrawlAndCategorizationServiceImpl implements LinkCrawlAndCatego
 
     private final BrokenLinkAndDuplicateTracker brokenLinkAndDuplicateTracker;
 
-    private final ProgressTrackerImpl progressTracker;
+    private final ProgressTracker progressTracker;
 
     private static final Set<String> SOCIAL_MEDIA_DOMAINS = Set.of(
             "facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com", "tiktok.com"

@@ -1,10 +1,12 @@
 package africa.siteanalysisagent.service;
 
+import java.util.concurrent.CompletableFuture;
+
 public interface ProgressTracker {
 
-        void sendProgress(String scanId, String webhookUrl, int progress, String message);
+    public CompletableFuture<Void> sendProgress(String scanId, String channelId, int progress, String message);
 
-        void sendReport(String scanId, String webhookUrl, String title, String reportContent);
+    public CompletableFuture<Void> sendReport(String scanId, String channelId, String title, String reportContent);
 
-        void sendAlert(String channelId, String alertMessage);
-    }
+    public CompletableFuture<Void> sendAlert(String channelId, String alertMessage);
+}
