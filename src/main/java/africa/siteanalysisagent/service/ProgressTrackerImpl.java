@@ -1,85 +1,137 @@
 package africa.siteanalysisagent.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import africa.siteanalysisagent.WebSocket.WebSocketMessageService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class ProgressTrackerImpl implements ProgressTracker {
 
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
-
-    @Autowired
-    private TelexService telexService;
-
+    private final TelexService telexService;
+    private final WebSocketMessageService webSocketMessageService;
+    private final Map<String, AtomicInteger> messageSequences = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<Void>> lastMessageFutures = new ConcurrentHashMap<>();
 
     @Override
-    public void sendProgress(String scanId, String channelId, int progress, String message) {
-        try {
+    public CompletableFuture<Void> sendProgress(String scanId, String channelId, int progress, String message) {
+        // Get or create sequence counter for this channel
+        AtomicInteger sequence = messageSequences.computeIfAbsent(
+                channelId, k -> new AtomicInteger(0));
 
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("scanId", scanId);
-            payload.put("progress", progress);
-            payload.put("message", message);
+        // Chain to the previous message's future
+        CompletableFuture<Void> previousFuture = lastMessageFutures.getOrDefault(channelId,
+                CompletableFuture.completedFuture(null));
 
-            System.out.println("Sending WebSocket update: " + payload);
+        CompletableFuture<Void> currentFuture = previousFuture.thenCompose(ignored -> {
+            try {
+                // Prepare payload with sequence number
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("scanId", scanId);
+                payload.put("progress", progress);
+                payload.put("message", message);
+                payload.put("sequence", sequence.getAndIncrement());
 
+                // Send WebSocket immediately
+                webSocketMessageService.sendToUser(
+                        channelId,
+                        new ObjectMapper().writeValueAsString(payload));
 
-            messagingTemplate.convertAndSend("/topic/progress/" + scanId, payload);
+                // Format and send Telex message
+                String telexMessage = "🔍 **Scanning Progress**\n" +
+                        "------------------------------\n" +
+                        "📊 **Progress:** `" + progress + "%`\n" +
+                        "📢 **Status:** `" + message + "`\n" +
+                        "------------------------------";
 
-            String telexMessage = "🔍 **Scanning Progress**\n"
-                    + "------------------------------\n"
-                    + "📊 **Progress:** `" + progress + "%`\n"
-                    + "📢 **Status:** `" + message + "`\n"
-                    + "------------------------------";
+                return telexService.sendMessage(channelId, telexMessage)
+                        .thenAccept(response -> {
+                            if (response.getStatusCode().is2xxSuccessful()) {
+                                log.info("✅ Progress update sent successfully to Telex: {}", response.getBody());
+                            } else {
+                                log.error("❌ Failed to send progress update to Telex: {}", response.getBody());
+                            }
+                        });
+            } catch (JsonProcessingException e) {
+                log.error("❌ Error creating progress payload: {}", e.getMessage());
+                return CompletableFuture.completedFuture(null);
+            }
+        });
 
-            // Log Telex updates for debugging
-            System.out.println("📩 Sending Telex update: " + telexMessage);
-
-            telexService.sendMessage(channelId, telexMessage);
-            Thread.sleep(500);
-        }catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
+        // Update the last message future for this channel
+        lastMessageFutures.put(channelId, currentFuture);
+        return currentFuture;
     }
 
     @Override
-    public void sendReport(String scanId, String channelId, String title, String reportContent) {
-
+    public CompletableFuture<Void> sendReport(String scanId, String channelId, String title, String reportContent) {
         if (channelId == null || channelId.isEmpty()) {
-            System.err.println("❌ Cannot send Telex report: channel_id is missing.");
-            return;
+            log.error("❌ Cannot send Telex report: channel_id is missing.");
+            return CompletableFuture.completedFuture(null);
         }
 
+        // Format the report
         String formattedReport = "**" + title + "**\n\n" + reportContent;
 
-        System.out.println("📩 Sending Telex Report: " + title);
-        telexService.sendMessage(channelId, formattedReport);
-    }
+        // Chain to the previous message's future
+        CompletableFuture<Void> previousFuture = lastMessageFutures.getOrDefault(channelId,
+                CompletableFuture.completedFuture(null));
 
-    private String formatProgressMessage(int progress, String message) {
-        return "🔍 **Scanning Progress**\n"
-                + "------------------------------\n"
-                + "📊 **Progress:** `" + progress + "%`\n"
-                + "📢 **Status:** `" + message + "`\n"
-                + "------------------------------";
-    }
+        CompletableFuture<Void> currentFuture = previousFuture.thenCompose(ignored -> {
+            // Send the report via WebSocket
+            webSocketMessageService.sendToUser(channelId, formattedReport);
 
+            return telexService.sendMessage(channelId, formattedReport)
+                    .thenAccept(response -> {
+                        if (response.getStatusCode().is2xxSuccessful()) {
+                            log.info("✅ Report sent successfully to Telex: {}", response.getBody());
+                        } else {
+                            log.error("❌ Failed to send report to Telex: {}", response.getBody());
+                        }
+                    });
+        });
+
+        lastMessageFutures.put(channelId, currentFuture);
+        return currentFuture;
+    }
 
     @Override
-    public void sendAlert(String channelId, String alertMessage) {
-
+    public CompletableFuture<Void> sendAlert(String channelId, String alertMessage) {
         if (channelId == null || channelId.isEmpty()) {
-            System.err.println("❌ Cannot send alert: channel_id is missing.");
-            return;
+            log.error("❌ Cannot send alert: channel_id is missing.");
+            return CompletableFuture.completedFuture(null);
         }
 
-        System.out.println("🚨 Sending Telex Alert: " + alertMessage);
-        telexService.sendMessage(channelId, alertMessage);
+        // Chain to the previous message's future
+        CompletableFuture<Void> previousFuture = lastMessageFutures.getOrDefault(channelId,
+                CompletableFuture.completedFuture(null));
+
+        CompletableFuture<Void> currentFuture = previousFuture.thenCompose(ignored -> {
+            // Send the alert via WebSocket
+            webSocketMessageService.sendToUser(channelId, alertMessage);
+
+            return telexService.sendMessage(channelId, alertMessage)
+                    .thenAccept(response -> {
+                        if (response.getStatusCode().is2xxSuccessful()) {
+                            log.info("✅ Alert sent successfully to Telex: {}", response.getBody());
+                        } else {
+                            log.error("❌ Failed to send alert to Telex: {}", response.getBody());
+                        }
+                    });
+        });
+
+        lastMessageFutures.put(channelId, currentFuture);
+        return currentFuture;
     }
 }

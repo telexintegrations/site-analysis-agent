@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -25,7 +26,7 @@ import java.util.concurrent.Executors;
 public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 
     private final TelexService telexService;
-    private final ProgressTrackerImpl progressTracker;
+    private final ProgressTracker progressTracker;
     private final LinkCrawlAndCategorizationService linkCrawlAndCategory;
     private final BrokenLinkAndDuplicateTracker brokenLinkAndDuplicateTracker;
     private final GeminiService geminiService;
@@ -33,24 +34,33 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
 
-
-
     private static final int TIMEOUT = 10000; // 10 seconds
-
-    private final Map<String, Boolean> activeScans = new HashMap<>(); // Tracks active scans per channel
+    private final Map<String, Boolean> activeScans = new HashMap<>();
     private static final String BOT_IDENTIFIER = "#bot_message";
 
+    // Track the last message future for each channel
+    private final Map<String, CompletableFuture<Void>> messageSequences = new HashMap<>();
 
-    private void sendOrderedProgress(String scanId, String channelId, int progress, String message) {
+    private CompletableFuture<Void> sendOrderedProgress(String scanId, String channelId, int progress, String message) {
+        // Get the last future for this channel or start with completed future
+        CompletableFuture<Void> lastFuture = messageSequences.getOrDefault(channelId,
+                CompletableFuture.completedFuture(null));
 
+        // Create new future that chains after the last one
+        CompletableFuture<Void> newFuture = lastFuture.thenCompose(ignored -> {
             try {
-                Thread.sleep(1000); // Delay to maintain message order
-                // Only progress updates get the identifier
+                Thread.sleep(1000); // Maintain delay between messages
                 String taggedMessage = message + " " + BOT_IDENTIFIER;
-                progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
+                return progressTracker.sendProgress(scanId, channelId, progress, taggedMessage);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                return CompletableFuture.completedFuture(null);
             }
+        });
+
+        // Update the last future for this channel
+        messageSequences.put(channelId, newFuture);
+        return newFuture;
     }
 
     @Override
@@ -67,60 +77,62 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             return;
         }
 
-        try {
+        // Clear any previous sequence for this channel
+        messageSequences.remove(channelId);
 
-        activeScans.put(channelId, true);
+        asyncExecutor.execute(() -> {
+            try {
+                activeScans.put(channelId, true);
 
-
-                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting SEO Meta Tag Scan...");
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting SEO Meta Tag Scan...").join();
                 Document document = scrape(url);
-                sendOrderedProgress(scanId, channelId, 40, "🏷️ Extracting Meta Tags...");
+
+                sendOrderedProgress(scanId, channelId, 40, "🏷️ Extracting Meta Tags...").join();
                 MetaTagExtractor metaTagExtractor = new MetaTagExtractor(document);
                 Map<String, List<String>> metaTags = metaTagExtractor.extractMetaTags();
-                sendOrderedProgress(scanId, channelId, 80, "📊 Generating SEO Meta Tag Report...");
+
+                sendOrderedProgress(scanId, channelId, 80, "📊 Generating SEO Meta Tag Report...").join();
                 String seoMetaTagReport = generateMetaTagReport(url, metaTags);
-                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!");
 
-                // Send the SEO Meta Tag Report to Telex
-                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport);
+                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Meta Tag Scan Completed!").join();
+                sendReportAfterTelex(scanId, channelId, "🏷️ **SEO Meta Tag Report**", seoMetaTagReport).join();
 
-                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...");
-                sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...");
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Categorized Link Scan...").join();
+                sendOrderedProgress(scanId, channelId, 40, "🔗 Scanning Links...").join();
                 CategorizedLink categorizedLinks = linkCrawlAndCategory.categorizedLinkDto(document);
-                sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...");
+
+                sendOrderedProgress(scanId, channelId, 80, "📊 Generating Categorized Link Report...").join();
                 String categorizedLinkReport = generateCategorizedLinkReport(url, categorizedLinks);
-                sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!");
 
-                // Send the Categorized Link Report to Telex
-                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport);
+                sendOrderedProgress(scanId, channelId, 100, "✅ Categorized Link Scan Completed!").join();
+                sendReportAfterTelex(scanId, channelId, "🔗 **Categorized Link Report**", categorizedLinkReport).join();
 
-                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...");
+                sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...").join();
                 linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, categorizedLinks);
-                sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...");
+
+                sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...").join();
                 String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
-                sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!");
 
-                // Send the Broken & Duplicate Links Report to Telex
-                sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport);
+                sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!").join();
+                sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**", brokenAndDuplicateLinksReport).join();
 
-                sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...");
+                sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...").join();
                 Map<String, Object> analysisResult = geminiService.analyzeSeo(url, metaTags, categorizedLinks);
-                sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...");
-                sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...");
-                sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...");
+
+                sendOrderedProgress(scanId, channelId, 30, "🔍 Analyzing Meta Tags...").join();
+                sendOrderedProgress(scanId, channelId, 50, "📈 Evaluating Link Structure...").join();
+                sendOrderedProgress(scanId, channelId, 70, "🧠 Processing AI Recommendations...").join();
 
                 int seoScore = (int) analysisResult.getOrDefault("seo_score", 0);
                 String recommendations = (String) analysisResult.getOrDefault("optimization_suggestions", "No recommendations found.");
                 String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags", "No optimized meta tags found.");
 
-                sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...");
+                sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...").join();
 
                 String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n💡 **AI Recommendations:**\n" + recommendations + "\n\n";
+                telexService.sendMessage(channelId, fullReport + " " + BOT_IDENTIFIER).join();
 
-                telexService.sendMessage(channelId, fullReport +" "+ BOT_IDENTIFIER).join();
-//             Send the Final SEO Score Report to Telex
-
-            sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!");
+                sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!").join();
 
                 telexService.sendInteractiveMessage(channelId,
                         "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
@@ -129,19 +141,39 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 pendingOptimizations.put(channelId, optimizedMetags);
                 log.info("Stored optimized meta tags for channel {}: {}", channelId, optimizedMetags);
 
-
-
             } catch (IOException e) {
                 log.error("❌ Error during SEO analysis: {}", e.getMessage(), e);
                 sendOrderedProgress(scanId, channelId, 100, "❌ Scan Failed: " + e.getMessage() + " " + BOT_IDENTIFIER);
                 telexService.sendMessage(channelId, "❌ Error generating SEO report: " + e.getMessage() + " " + BOT_IDENTIFIER);
-
             } finally {
                 activeScans.put(channelId, false);
+                messageSequences.remove(channelId);
             }
-
+        });
     }
 
+    private CompletableFuture<Void> sendReportAfterTelex(String scanId, String channelId, String title, String reportContent) {
+        if (channelId == null || channelId.isEmpty()) {
+            log.error("❌ Cannot send Telex report: channel_id is missing.");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> lastFuture = messageSequences.getOrDefault(channelId,
+                CompletableFuture.completedFuture(null));
+
+        CompletableFuture<Void> newFuture = lastFuture.thenCompose(ignored -> {
+            try {
+                String fullMessage = title + "\n\n" + reportContent + "\n\n" + BOT_IDENTIFIER;
+                return progressTracker.sendReport(scanId, channelId, title, fullMessage);
+            } catch (Exception ex) {
+                log.error("❌ Error sending report to Telex: {}", ex.getMessage());
+                return CompletableFuture.completedFuture(null);
+            }
+        });
+
+        messageSequences.put(channelId, newFuture);
+        return newFuture;
+    }
 
     @Override
     public String getOptimizedMetags(String channelId) {
@@ -155,27 +187,6 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         pendingOptimizations.remove(channelId);
     }
 
-
-
-    private void sendReportAfterTelex(String scanId, String channelId, String title, String reportContent) {
-        if (channelId == null || channelId.isEmpty()) {
-            log.error("❌ Cannot send Telex report: channel_id is missing.");
-            return;
-        }
-
-        try {
-            String fullMessage = title + "\n\n" + reportContent + "\n\n" + BOT_IDENTIFIER;
-            ResponseEntity<String> response = telexService.sendMessage(channelId, fullMessage).join();
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ Report sent successfully to Telex: {}", response.getBody());
-            } else {
-                log.error("❌ Failed to send report to Telex: {}", response.getBody());
-            }
-        } catch (Exception ex) {
-            log.error("❌ Error sending report to Telex: {}", ex.getMessage());
-        }
-    }
 
 
     private void applyOptimizedMetaTags(String channelId, String url) {
