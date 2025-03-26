@@ -24,6 +24,8 @@ public class ProgressTrackerImpl implements ProgressTracker {
     private final Map<String, AtomicInteger> messageSequences = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<Void>> lastMessageFutures = new ConcurrentHashMap<>();
 
+    private static final String BOT_IDENTIFIER = "#bot_message";
+
     @Override
     public CompletableFuture<Void> sendProgress(String scanId, String channelId, int progress, String message) {
         // Get or create sequence counter for this channel
@@ -117,11 +119,20 @@ public class ProgressTrackerImpl implements ProgressTracker {
         CompletableFuture<Void> previousFuture = lastMessageFutures.getOrDefault(channelId,
                 CompletableFuture.completedFuture(null));
 
-        CompletableFuture<Void> currentFuture = previousFuture.thenCompose(ignored -> {
-            // Send the alert via WebSocket
-            webSocketMessageService.sendToUser(channelId, alertMessage);
 
-            return telexService.sendMessage(channelId, alertMessage)
+
+        CompletableFuture<Void> currentFuture = previousFuture.thenCompose(ignored -> {
+
+
+            // Ensure message ends with bot identifier
+            String formattedMessage = alertMessage.trim();
+            if (!formattedMessage.endsWith(BOT_IDENTIFIER)) {
+                formattedMessage += " " + BOT_IDENTIFIER;
+            }
+            // Send the alert via WebSocket
+            webSocketMessageService.sendToUser(channelId, formattedMessage);
+
+            return telexService.sendMessage(channelId, formattedMessage)
                     .thenAccept(response -> {
                         if (response.getStatusCode().is2xxSuccessful()) {
                             log.info("✅ Alert sent successfully to Telex: {}", response.getBody());
