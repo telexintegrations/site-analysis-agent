@@ -166,7 +166,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                                         "🛠️ **Would you like to apply the AI-optimized fixes?**\n" +
                                                 "These changes will improve your SEO score!\n\n" +
                                                 "👉 Type `apply_fixes` to apply\n" +
-                                                "👉 Type `ignore` to skip",
+                                                "👉 Type `ignore` to skip" + " "+ BOT_IDENTIFIER,
                                         List.of(
                                                 new Button("✅ Apply Fixes", "apply_fixes"),
                                                 new Button("❌ Ignore", "ignore")
