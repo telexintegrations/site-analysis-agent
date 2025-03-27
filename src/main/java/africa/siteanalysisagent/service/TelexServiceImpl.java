@@ -69,7 +69,7 @@ public class TelexServiceImpl implements TelexService {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                return sendToTelex(webhookUrl, payload);
+                return sendToTelex("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4", payload);
             }, telexExecutor);
         });
     }
@@ -105,7 +105,7 @@ public class TelexServiceImpl implements TelexService {
             payload.put("buttons", buttonList);
 
             // Your original sending logic
-            return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl, payload), telexExecutor);
+            return CompletableFuture.supplyAsync(() -> sendToTelex("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4", payload), telexExecutor);
         });
     }
 
@@ -131,7 +131,7 @@ public class TelexServiceImpl implements TelexService {
                 payload.put("channel_id", channelId);
 
                 // Your original sending logic
-                return CompletableFuture.supplyAsync(() -> sendToTelex(webhookUrl, payload), telexExecutor);
+                return CompletableFuture.supplyAsync(() -> sendToTelex("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4", payload), telexExecutor);
             } catch (Exception e) {
                 log.error("Failed to send Telex notification: {}", e.getMessage(), e);
                 return CompletableFuture.completedFuture(
@@ -180,7 +180,7 @@ public class TelexServiceImpl implements TelexService {
                 .map(Setting::defaultValue)
                 .filter(url -> url != null && !url.isBlank())
                 .findFirst()
-                .orElse(null); // Don't fall back to hardcoded URL
+                .orElse("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4"); // Don't fall back to hardcoded URL
 
         if (webhookUrl != null) {
             // Validate URL format
@@ -214,7 +214,7 @@ public class TelexServiceImpl implements TelexService {
                 HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
                 log.info("📤 Sending message to Telex (attempt {}): {}", attempt, payload);
 
-                ResponseEntity<String> response = restTemplate.postForEntity(webhookUrl, entity, String.class);
+                ResponseEntity<String> response = restTemplate.postForEntity("https://ping.telex.im/v1/webhooks/019582d6-476b-7d12-8721-37f9ebf858b4", entity, String.class);
 
                 if (response.getStatusCode().is2xxSuccessful()) {
                     log.info("✅ Message sent successfully: {}", response.getBody());

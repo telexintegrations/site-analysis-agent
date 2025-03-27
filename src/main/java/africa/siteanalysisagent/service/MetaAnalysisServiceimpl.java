@@ -9,6 +9,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -33,6 +34,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private final ApplicationEventPublisher eventPublisher;
     private final Map<String, String> pendingOptimizations = new HashMap<>();
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
+    private SimpMessagingTemplate messagingTemplate;
 
     private static final int TIMEOUT = 10000; // 10 seconds
     private final Map<String, Boolean> activeScans = new HashMap<>();
@@ -113,19 +115,24 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 }).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "🔄 Starting Broken & Duplicate Links Scan...").join();
+
                 CompletableFuture<Void> brokenLinksFuture = CompletableFuture.runAsync(() -> {
-                    linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, linksFuture.join());
+                    try {
+                        // Wrap in try-catch to prevent disruption
+                        linkCrawlAndCategory.detectBrokenAndDuplicateLinks(scanId, channelId, linksFuture.join());
+                    } catch (Exception e) {
+                        log.error("Broken link check failed but continuing scan", e);
+                    }
                 }, asyncExecutor);
 
-// Wait for broken links detection to complete before sending progress updates
+// Rest of your existing chain remains exactly the same
                 brokenLinksFuture.thenCompose(ignored ->
-                        sendOrderedProgress(scanId, channelId, 50, "📊 Generating Broken & Duplicate Links Report...")
+                        sendOrderedProgress(scanId, channelId, 50, "📊 Generating Report...")
                 ).thenCompose(ignored -> {
-                    String brokenAndDuplicateLinksReport = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
-                    return sendReportAfterTelex(scanId, channelId, "❌ **Broken & Duplicate Links Report**",
-                            brokenAndDuplicateLinksReport);
+                    String report = brokenLinkAndDuplicateTracker.generateReport(url, scanId);
+                    return sendReportAfterTelex(scanId, channelId, "❌ **Broken Links Report**", report);
                 }).thenCompose(ignored ->
-                        sendOrderedProgress(scanId, channelId, 100, "✅ Broken & Duplicate Links Scan Completed!")
+                        sendOrderedProgress(scanId, channelId, 100, "✅ Scan Completed!")
                 ).join();
 
                 sendOrderedProgress(scanId, channelId, 10, "📊 Starting SEO Score Calculation...").join();
@@ -143,22 +150,28 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                     String optimizedMetags = (String) analysisResult.getOrDefault("optimized_meta_tags",
                             "No optimized meta tags found.");
 
-                    sendOrderedProgress(scanId, channelId, 90, "📝 Compiling Final Report...").join();
+                    // Store the optimized tags
+                    pendingOptimizations.put(channelId, optimizedMetags);
 
+                    // Send final report
                     String fullReport = "📊 **Final SEO Score:** " + seoScore + "/100\n\n" +
                             "💡 **AI Recommendations:**\n" + recommendations + "\n\n";
 
-                    return telexService.sendMessage(channelId, fullReport + " " + BOT_IDENTIFIER)
-                            .thenCompose(ignored -> sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!"))
+                    return sendOrderedProgress(scanId, channelId, 100, "✅ SEO Analysis Complete!")
+                            .thenCompose(ignored -> telexService.sendMessage(channelId, fullReport + " " + BOT_IDENTIFIER))
                             .thenCompose(ignored -> {
-                                telexService.sendInteractiveMessage(channelId,
-                                                "📊 **SEO Analysis Complete!**\nWould you like to apply the AI-optimized fixes?\n" +
-                                                        "👉 Type `apply_fixes` to apply or `ignore` to skip." + " " + BOT_IDENTIFIER,
-                                                List.of(new Button("✅ Apply Fixes", "apply_fixes"),
-                                                        new Button("❌ Ignore", "ignore")))
-                                        .join();
-                                pendingOptimizations.put(channelId, optimizedMetags);
-                                return CompletableFuture.completedFuture(null);
+                                // Send the fix prompt with buttons
+                                return telexService.sendInteractiveMessage(
+                                        channelId,
+                                        "🛠️ **Would you like to apply the AI-optimized fixes?**\n" +
+                                                "These changes will improve your SEO score!\n\n" +
+                                                "👉 Type `apply_fixes` to apply\n" +
+                                                "👉 Type `ignore` to skip",
+                                        List.of(
+                                                new Button("✅ Apply Fixes", "apply_fixes"),
+                                                new Button("❌ Ignore", "ignore")
+                                        )
+                                );
                             });
                 }).join();
 
@@ -174,27 +187,48 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 
     }
 
-    private CompletableFuture<Void> sendReportAfterTelex(String scanId, String channelId, String title, String reportContent) {
-        if (channelId == null || channelId.isEmpty()) {
-            log.error("❌ Cannot send Telex report: channel_id is missing.");
-            return CompletableFuture.completedFuture(null);
-        }
+    private CompletableFuture<Void> sendReportAfterTelex(String scanId, String channelId, String title, String content) {
+        // Get the last future for this channel to maintain order
+        CompletableFuture<Void> lastFuture = messageSequences.getOrDefault(
+                channelId,
+                CompletableFuture.completedFuture(null)
+        );
 
-        CompletableFuture<Void> lastFuture = messageSequences.getOrDefault(channelId,
-                CompletableFuture.completedFuture(null));
-
-        CompletableFuture<Void> newFuture = lastFuture.thenCompose(ignored -> {
+        // Create the new sequenced future
+        CompletableFuture<Void> newFuture = lastFuture.thenComposeAsync(ignored -> {
             try {
-                String fullMessage = title + "\n\n" + reportContent + "\n\n" + BOT_IDENTIFIER;
-                return progressTracker.sendReport(scanId, channelId, title, fullMessage);
-            } catch (Exception ex) {
-                log.error("❌ Error sending report to Telex: {}", ex.getMessage());
+                String fullMessage = title + "\n\n" + content + "\n\n" + BOT_IDENTIFIER;
+
+                // Choose ONE delivery method (comment out the other):
+
+                // OPTION 1: Send via ProgressTracker only (recommended)
+//                return progressTracker.sendReport(scanId, channelId, title, fullMessage);
+
+
+            // OPTION 2: Send direct with formatting (without ProgressTracker)
+            String telexFormatted = formatForTelex(title, content);
+            return telexService.sendMessage(channelId, telexFormatted)
+                .thenAccept(response -> {
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        log.warn("Telex delivery failed for channel {}", channelId);
+                    }
+                });
+
+            } catch (Exception e) {
+                log.error("Report delivery failed", e);
                 return CompletableFuture.completedFuture(null);
             }
-        });
+        }, asyncExecutor);
 
+        // Update the sequence tracker
         messageSequences.put(channelId, newFuture);
         return newFuture;
+    }
+
+    private String formatForTelex(String title, String content) {
+        return "📋 " + title + "\n\n" +
+                content.replaceAll("\\*\\*(.*?)\\*\\*", "*$1*") + "\n\n" +
+                BOT_IDENTIFIER;
     }
 
     @Override
