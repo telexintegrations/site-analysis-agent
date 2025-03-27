@@ -1,11 +1,13 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.WebSocket.WebSocketMessageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -21,123 +23,132 @@ import java.util.function.Supplier;
 public class ProgressTrackerImpl implements ProgressTracker {
 
     private final TelexService telexService;
-    private final WebSocketMessageService webSocketMessageService;
+    private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
 
-    // Track last message future per channel
+    // Track message sequences per channel
     private final Map<String, CompletableFuture<Void>> channelQueues = new ConcurrentHashMap<>();
-
-    // Global sequence generator for all channels
     private final AtomicLong globalSequence = new AtomicLong(0);
+    private final ScheduledExecutorService retryExecutor = Executors.newScheduledThreadPool(2);
 
     private static final String BOT_IDENTIFIER = "#bot_message";
-    private static final Executor messageExecutor = Executors.newSingleThreadExecutor();
+    private static final String WS_DESTINATION_PREFIX = "/queue/progress/";  // Changed to queue for direct messaging
+    private static final int MAX_RETRY_ATTEMPTS = 3;
 
     @Override
     public CompletableFuture<Void> sendProgress(String scanId, String channelId, int progress, String message) {
         return enqueueMessage(channelId, () -> {
-            try {
-                // Prepare payload with global sequence number
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("scanId", scanId);
-                payload.put("progress", progress);
-                payload.put("message", ensureBotIdentifier(message));
-                payload.put("sequence", globalSequence.getAndIncrement());
-                payload.put("timestamp", System.currentTimeMillis());
-
-                // Serialize payload
-                String jsonPayload = objectMapper.writeValueAsString(payload);
-
-                // Send to both transports
-                return CompletableFuture.allOf(
-                        sendWebSocketMessage(channelId, jsonPayload),
-                        sendTelexMessage(channelId, formatTelexProgress(progress, message))
-                );
-            } catch (JsonProcessingException e) {
-                log.error("JSON serialization failed for progress update", e);
-                return CompletableFuture.completedFuture(null);
-            }
+            Map<String, Object> payload = createPayload(scanId, progress, message);
+            return sendDualMessage(channelId, payload, "progress");
         });
     }
 
     @Override
     public CompletableFuture<Void> sendReport(String scanId, String channelId, String title, String reportContent) {
         return enqueueMessage(channelId, () -> {
-            String formattedContent = formatReport(title, reportContent);
-            return CompletableFuture.allOf(
-                    sendWebSocketMessage(channelId, formattedContent),
-                    sendTelexMessage(channelId, formattedContent));
+            Map<String, Object> payload = createPayload(scanId, 100, title);
+            payload.put("content", reportContent);
+            payload.put("type", "report");
+            return sendDualMessage(channelId, payload, "report");
         });
     }
 
     @Override
     public CompletableFuture<Void> sendAlert(String channelId, String alertMessage) {
         return enqueueMessage(channelId, () -> {
-            String formattedMessage = ensureBotIdentifier(alertMessage);
-            return CompletableFuture.allOf(
-                    sendWebSocketMessage(channelId, formattedMessage),
-                    sendTelexMessage(channelId, formattedMessage));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("message", ensureBotIdentifier(alertMessage));
+            payload.put("type", "alert");
+            payload.put("timestamp", System.currentTimeMillis());
+            return sendDualMessage(channelId, payload, "alert");
         });
     }
 
-    // ========== PRIVATE HELPERS ========== //
+    private CompletableFuture<Void> sendDualMessage(String channelId, Map<String, Object> payload, String messageType) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                String jsonPayload = objectMapper.writeValueAsString(payload);
 
-    private CompletableFuture<Void> enqueueMessage(String channelId, Supplier<CompletableFuture<Void>> messageSupplier) {
-        // Get or create the queue tail for this channel
-        CompletableFuture<Void> previousFuture = channelQueues.computeIfAbsent(
-                channelId,
-                k -> CompletableFuture.completedFuture(null)
+                // 1. First try WebSocket
+                boolean wsSuccess = sendWithRetry(() -> {
+                    messagingTemplate.convertAndSendToUser(
+                            channelId,
+                            WS_DESTINATION_PREFIX + channelId,
+                            jsonPayload
+                    );
+                    return true;
+                }, "WebSocket", channelId);
+
+                // 2. Fallback to Telex if WebSocket fails
+                if (!wsSuccess) {
+                    String telexMessage = formatForTelex(payload, messageType);
+                    sendWithRetry(() -> {
+                        telexService.sendMessage(channelId, telexMessage).join();
+                        return true;
+                    }, "Telex", channelId);
+                }
+
+            } catch (JsonProcessingException e) {
+                log.error("JSON serialization failed for channel {}: {}", channelId, e.getMessage());
+            }
+        });
+    }
+
+    @Retryable(maxAttempts = MAX_RETRY_ATTEMPTS,
+            backoff = @Backoff(delay = 1000, multiplier = 2))
+    private boolean sendWithRetry(Supplier<Boolean> sendOperation, String serviceType, String channelId) {
+        try {
+            return sendOperation.get();
+        } catch (Exception e) {
+            log.warn("{} send failed for channel {} (retrying): {}", serviceType, channelId, e.getMessage());
+            throw e; // Trigger retry
+        }
+    }
+
+    private Map<String, Object> createPayload(String scanId, int progress, String message) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("scanId", scanId);
+        payload.put("progress", progress);
+        payload.put("message", ensureBotIdentifier(message));
+        payload.put("sequence", globalSequence.getAndIncrement());
+        payload.put("timestamp", System.currentTimeMillis());
+        return payload;
+    }
+
+    private String formatForTelex(Map<String, Object> payload, String type) {
+        switch (type) {
+            case "progress":
+                return String.format(
+                        "🔍 **Progress Update**\n━━━━━━━━━━━━━━━━━━\n" +
+                                "📊 Progress: %d%%\n📢 Status: %s\n%s",
+                        payload.get("progress"), payload.get("message"), BOT_IDENTIFIER
+                );
+            case "report":
+                return String.format("**%s**\n\n%s\n%s",
+                        payload.get("message"), payload.get("content"), BOT_IDENTIFIER);
+            default:
+                return payload.get("message").toString();
+        }
+    }
+
+    private CompletableFuture<Void> enqueueMessage(String channelId, Supplier<CompletableFuture<Void>> messageTask) {
+        CompletableFuture<Void> lastFuture = channelQueues.getOrDefault(
+                channelId, CompletableFuture.completedFuture(null)
         );
 
-        // Chain the new message
-        CompletableFuture<Void> newFuture = previousFuture
-                .thenComposeAsync(ignored -> messageSupplier.get(), messageExecutor)
-                .exceptionally(ex -> {
-                    log.error("Message failed for channel {}: {}", channelId, ex.getMessage());
-                    return null; // Continue queue despite failures
-                });
+        CompletableFuture<Void> newFuture = lastFuture.thenComposeAsync(ignored ->
+                        messageTask.get().exceptionally(ex -> {
+                            log.error("Message failed for channel {}: {}", channelId, ex.getMessage());
+                            return null;
+                        }),
+                retryExecutor
+        );
 
-        // Update the channel queue
         channelQueues.put(channelId, newFuture);
         return newFuture;
     }
 
-    private CompletableFuture<Void> sendWebSocketMessage(String channelId, String message) {
-        return CompletableFuture.runAsync(() -> {
-            webSocketMessageService.sendToUser(channelId, message);
-        }, messageExecutor);
-    }
-
-    private CompletableFuture<Void> sendTelexMessage(String channelId, String message) {
-        return telexService.sendMessage(channelId, message)
-                .thenAcceptAsync(response -> {
-                    if (response.getStatusCode().is2xxSuccessful()) {
-                        log.debug("Message delivered to Telex for channel {}", channelId);
-                    } else {
-                        log.warn("Telex delivery failed for channel {}: {}", channelId, response.getBody());
-                    }
-                }, messageExecutor);
-    }
-
     private String ensureBotIdentifier(String message) {
         return message.trim() + (message.endsWith(BOT_IDENTIFIER) ? "" : " " + BOT_IDENTIFIER);
-    }
-
-    private String formatTelexProgress(int progress, String message) {
-        return String.format(
-                "🔍 **Progress Update**\n" +
-                        "━━━━━━━━━━━━━━━━━━\n" +
-                        "📊 Progress: %d%%\n" +
-                        "📢 Status: %s\n" +
-                        "%s",
-                progress, message, BOT_IDENTIFIER
-        );
-    }
-
-    private String formatReport(String title, String content) {
-        return String.format(
-                "**%s**\n\n%s\n%s",
-                title, content, BOT_IDENTIFIER
-        );
     }
 }
