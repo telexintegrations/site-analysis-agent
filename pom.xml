@@ -82,6 +82,11 @@
             <version>1.0.0</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
 
             <!-- gRPC Netty Shaded -->
             <dependency>
