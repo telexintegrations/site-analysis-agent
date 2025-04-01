@@ -1,7 +1,10 @@
 package africa.siteanalysisagent.service;
 
-import africa.siteanalysisagent.dto.Setting;
+import africa.siteanalysisagent.dto.SiteAnalysis;
 import africa.siteanalysisagent.dto.TelexUserRequest;
+import africa.siteanalysisagent.model.ChatMessage;
+import africa.siteanalysisagent.model.ChatResponse;
+import africa.siteanalysisagent.model.SEOReport;
 import africa.siteanalysisagent.model.TelexIntegration;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
@@ -11,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -23,7 +27,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
     private final MetaAnalysisService metaAnalysisService;
 
-    private final BotService botService;
+    private final LynxService lynxService;
     private final TelexService telexService;
 
     private final Map<String, String> userUrls = new HashMap<>();
@@ -76,18 +80,15 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 }
             }
             """;
-              
+
 
 
     @Override
     public TelexIntegration getTelexConfig() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
+        return objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
 
-        // Parse Telex settings JSON
-        TelexIntegration telexIntegration = objectMapper.readValue(TELEX_CONFIG_JSON, TelexIntegration.class);
-
-        return telexIntegration;
     }
 
     @Override
@@ -105,12 +106,21 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         // Update webhook URL dynamically
         telexService.updateWebhookUrl(telexUserRequest.channelId(), telexUserRequest.settings());
 
+        ChatMessage chatMessage = new ChatMessage(
+                "telex-user-" + telexUserRequest.channelId(), // Unique user ID
+                telexUserRequest.text(),                       // User message
+                null,                                          // No initial response
+                LocalDateTime.now()                            // Current timestamp
+        );
 
-        // Delegate all user commands to the BotService
-        log.info("📩 Processing message: '{}' from '{}'", safeRequest.text(), safeRequest.channelId());
-        botService.handleEvent(safeRequest);
-        // Return a response indicating the command was forwarded
-        return Map.of("message", "Command forwarded to bot service");
+        ChatResponse response = lynxService.processMessage(chatMessage);
+
+        // 4. Return formatted response
+        return Map.of(
+                "response_type", response.getType().name(),
+                "message", response.getMessage(),
+                "timestamp", LocalDateTime.now().toString()
+        );
     }
 
     private Map<String, Object> processConfirmedScan(String channelId) {
@@ -119,16 +129,15 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
         }
 
         String urlToScan = userUrls.get(channelId);
-        String scanId = UUID.randomUUID().toString();
-        log.info("📡 Scanning confirmed for '{}'", urlToScan);
-
         try {
-            metaAnalysisService.generateSeoReport(urlToScan, scanId, channelId);
+            SiteAnalysis analysis = metaAnalysisService.analyzeSite(urlToScan);
+            SEOReport report = metaAnalysisService.generateFullReport(urlToScan);
             userUrls.remove(channelId);
 
             return Map.of(
                     "url", urlToScan,
-                    "status", "success"
+                    "status", "success",
+                    "score", report.getScore()
             );
         } catch (Exception e) {
             log.error("❌ Error during scanning: {}", e.getMessage(), e);

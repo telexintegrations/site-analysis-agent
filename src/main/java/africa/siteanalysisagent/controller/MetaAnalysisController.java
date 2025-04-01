@@ -1,14 +1,17 @@
 package africa.siteanalysisagent.controller;
 
 import africa.siteanalysisagent.dto.*;
-import africa.siteanalysisagent.model.*;
+import africa.siteanalysisagent.model.ChatMessage;
+import africa.siteanalysisagent.model.ChatResponse;
 import africa.siteanalysisagent.service.*;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
@@ -17,37 +20,37 @@ import java.util.*;
 @Slf4j
 public class MetaAnalysisController {
 
+    private final LynxService lynxService;
     private final TelexServiceIntegration telexService;
-    private final BotService botService;
-    private final TelexService telexWebhookService;
 
-    @PostMapping("/scrape")
-    public ResponseEntity<Void> handleWebhook(@RequestBody WebhookPayload payload) {
+    @PostMapping("/interact")
+    public ChatResponse handleUserMessage(@Valid
+            @RequestBody ChatMessage chatMessage) {
+
+        //validate input
+        if(chatMessage.getUserMessage() == null || chatMessage.getUserMessage().isBlank()){
+          return ChatResponse.error("Message cannot be blank");
+        }
+
+        // Set default user ID if not provided
+        if (chatMessage.getUserId() == null) {
+            chatMessage.setUserId("guest-" + UUID.randomUUID());
+        }
+
+        // Set timestamp if not provided
+        if (chatMessage.getTimestamp() == null) {
+            chatMessage.setTimestamp(LocalDateTime.now());
+        }
+
         try {
-            // Extract and validate core data
-            WebhookData data = payload.extractValidData();
-
-            // Update webhook configuration if settings exist
-            if (payload.hasSettings()) {
-                telexWebhookService.updateWebhookUrl(data.channelId(), payload.getSettings());
-            }
-
-            // Process message if valid
-            if (data.hasValidMessage()) {
-                botService.handleEvent(new TelexUserRequest(
-                        data.message(),
-                        data.channelId(),
-                        data.username(),
-                        payload.hasSettings() ? payload.getSettings() : List.of()
-                ));
-            }
-
-            return ResponseEntity.ok().build();
+            ChatResponse response = lynxService.processMessage(chatMessage);
+            return ResponseEntity.ok(response).getBody();
         } catch (Exception e) {
-            log.error("Webhook processing failed", e);
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.internalServerError()
+                    .body(ChatResponse.error("Processing failed: " + e.getMessage())).getBody();
         }
     }
+
 
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
@@ -62,58 +65,7 @@ public class MetaAnalysisController {
                             LocalDate.now().toString()
                     ));
         }
-    }
 
-    // Inner DTO for payload handling
-    private record WebhookPayload(
-            Object message,
-            Object text,
-            String channelId,
-            String username,
-            List<Map<String, Object>> settings
-    ) {
-        public WebhookData extractValidData() {
-            return new WebhookData(
-                    extractCleanMessage(),
-                    determineChannelId(),
-                    username != null ? username : "unknown"
-            );
-        }
-
-        private String extractCleanMessage() {
-            String raw = message instanceof String ? (String) message :
-                    text instanceof String ? (String) text : null;
-            return raw != null ? raw.replaceAll("<[^>]+>", "").trim() : null;
-        }
-
-        private String determineChannelId() {
-                return     channelId != null ? channelId : "default-channel-id";
-        }
-
-        public boolean hasSettings() {
-            return settings != null && !settings.isEmpty();
-        }
-
-        public List<Setting> getSettings() {
-            return settings.stream()
-                    .map(setting -> new Setting(
-                            (String) setting.get("label"),
-                            (String) setting.get("type"),
-                            (String) setting.get("description"),
-                            (String) setting.get("default"),
-                            (Boolean) setting.get("required")
-                    ))
-                    .toList();
-        }
-    }
-
-    private record WebhookData(
-            String message,
-            String channelId,
-            String username
-    ) {
-        public boolean hasValidMessage() {
-            return message != null && !message.isBlank();
-        }
     }
 }
+

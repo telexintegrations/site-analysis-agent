@@ -1,11 +1,12 @@
 package africa.siteanalysisagent.service;
 
+import africa.siteanalysisagent.dto.SiteAnalysis;
+import africa.siteanalysisagent.model.SEOReport;
+
+import java.io.IOException;
+
 public interface MetaAnalysisService {
-    boolean isSingleUrl (String url);
+    public SiteAnalysis analyzeSite(String baseUrl) throws IOException;
 
-    void generateSeoReport(String url, String scanId, String channelId);
-
-    String getOptimizedMetags(String channelId);
-
-    void clearOptimizedMetags(String channelId);
+    SEOReport generateFullReport(String url) throws IOException;
 }
