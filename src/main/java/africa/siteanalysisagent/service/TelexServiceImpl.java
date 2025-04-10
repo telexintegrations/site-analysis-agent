@@ -44,7 +44,7 @@ public class TelexServiceImpl implements TelexService {
     @Override
     public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> button) {
         return enqueueForChannel(channelId, () -> {
-            String webhookUrl = TELEX_WEBHOOK_BASE + "/" + "01961ccd-cf6a-7891-afc6-260274df9a90";
+            String webhookUrl = TELEX_WEBHOOK_BASE + "/" + channelId;
 
             return CompletableFuture.supplyAsync(() -> {
                 try {

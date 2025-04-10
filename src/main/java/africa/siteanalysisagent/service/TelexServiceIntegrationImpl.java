@@ -68,13 +68,13 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                             },
                 "settings": [
                     {
-                        "label": "webhook_url",
+                        "label": "interval",
                         "type": "text",
-                        "description": "provide your telex channel webhook url",
-                        "default": "",
+                        "default": "* * *",
                         "required": true
                     }
                 ],
+                "bot": "true",
                 "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
                 "tick_url": ""
                 }
