@@ -6,7 +6,6 @@ import africa.siteanalysisagent.model.SEOReport;
 import java.io.IOException;
 
 public interface MetaAnalysisService {
-    public SiteAnalysis analyzeSite(String baseUrl) throws IOException;
+    public SiteAnalysis analyzeSite(String channelId, String baseUrl) throws IOException;
 
-    SEOReport generateFullReport(String url) throws IOException;
 }

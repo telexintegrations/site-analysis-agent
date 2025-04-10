@@ -5,53 +5,46 @@ import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Service
 public class WebScrapeService {
-    private static final int TIMEOUT = 10000;
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-    private final Map<String, Document> documentCache = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Document> scrapeCache = new ConcurrentHashMap<>();
 
     public Document scrape(String url) throws IOException {
-        // Check cache first
-        if (documentCache.containsKey(url)) {
-            return documentCache.get(url);
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("URL cannot be null or blank");
         }
 
-        Document doc = Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT)
-                .get();
-
-        // Cache the result
-        documentCache.put(url, doc);
-        return doc;
+        return scrapeCache.computeIfAbsent(url, k -> {
+            try {
+                return Jsoup.connect(url)
+                        .userAgent("Mozilla/5.0")
+                        .timeout(10000)
+                        .get();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to scrape URL: " + url, e);
+            }
+        });
     }
 
     public Document scrapeWithRetry(String url, int maxRetries) throws IOException, InterruptedException {
-        int retryCount = 0;
-        IOException lastException = null;
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("URL cannot be null or blank");
+        }
 
-        while (retryCount < maxRetries) {
+        int retries = 0;
+        while (retries < maxRetries) {
             try {
                 return scrape(url);
-            } catch (IOException e) {
-                lastException = e;
-                retryCount++;
-                Thread.sleep(500); // Wait before retrying
+            } catch (RuntimeException e) {
+                if (++retries == maxRetries) {
+                    throw new IOException("Failed after " + maxRetries + " attempts", e);
+                }
+                Thread.sleep(1000 * retries);
             }
         }
-        throw new IOException("Failed to scrape URL after " + maxRetries + " retries: " + url, lastException);
-    }
-
-    public String scrapeHtml(String url) throws IOException {
-        return scrape(url).html();
-    }
-
-    public String scrapeText(String url) throws IOException {
-        return scrape(url).text();
+        throw new IOException("Failed to scrape URL: " + url);
     }
 }
-

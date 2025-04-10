@@ -16,5 +16,9 @@ public class SEOReport {
     private int score;
     private String recommendations;
     private String optimizedMetaTags;
+    private String technicalDetails;
+    private String quickFixes;
+    private String strengths;
+    private String issues;
     private String rawHtml;
 }

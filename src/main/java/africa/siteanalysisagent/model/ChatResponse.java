@@ -1,8 +1,10 @@
 package africa.siteanalysisagent.model;
 
+import africa.siteanalysisagent.dto.Button;
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -13,6 +15,8 @@ public class ChatResponse {
     private SEOReport report;  // Optional, only for report-related responses
     private Map<String, Object> metadata;  // Additional context if needed
     private LocalDateTime timestamp;
+    private List<Button> buttons;
+
 
     // Private constructor
     private ChatResponse(ResponseType type, String message, SEOReport report,
@@ -24,6 +28,13 @@ public class ChatResponse {
         this.timestamp = timestamp;
     }
 
+    public ChatResponse(ResponseType type, String message, SEOReport report,
+                        Map<String, Object> data, LocalDateTime timestamp,
+                        List<Button> buttons) {
+        this(type, message, report, data, timestamp);
+        this.buttons = buttons;
+    }
+
     // Response categories
     public enum ResponseType {
         ANALYSIS_RESULT,     // When sharing a new site analysis
@@ -32,9 +43,17 @@ public class ChatResponse {
         TECH_GUIDANCE,      // Advice on tech stack improvements
         SEO_ADVICE,         // General SEO best practices
         ERROR,              // Error messages
-        PROMPT              // Requests for more info (e.g., "Which URL?")
+        PROMPT,              // Requests for more info (e.g., "Which URL?")
+        INFO,
+        SUCCESS
     }
 
+
+    public ChatResponse withButtons(List<Button> buttons) {
+        this.buttons = buttons;
+        return this;
+    }
+    
     // For general SEO advice (uses SEO_ADVICE type)
     public static ChatResponse forGeneral(String advice) {
         return new ChatResponse(
@@ -101,6 +120,26 @@ public class ChatResponse {
         return new ChatResponse(
                 ResponseType.PROMPT,
                 promptMessage,
+                null,
+                null,
+                LocalDateTime.now()
+        );
+    }
+
+    public static ChatResponse info(String infoMssage){
+        return new ChatResponse(
+                ResponseType.INFO,
+                infoMssage,
+                null,
+                null,
+                LocalDateTime.now()
+        );
+    }
+
+    public static ChatResponse success(String message){
+        return new ChatResponse(
+                ResponseType.SUCCESS,
+                message,
                 null,
                 null,
                 LocalDateTime.now()

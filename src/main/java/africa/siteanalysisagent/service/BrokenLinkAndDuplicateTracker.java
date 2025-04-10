@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -21,34 +22,46 @@ public class BrokenLinkAndDuplicateTracker {
     private static final int MAX_THREADS = 10;
     private final ExecutorService executor = Executors.newFixedThreadPool(MAX_THREADS);
 
-    // New method to get just broken links count
     public int getBrokenLinksCount(String baseUrl, CategorizedLink links) throws ExecutionException, InterruptedException {
-        return analyzeLinks(baseUrl, links).get("broken_links").size();
+        return getBrokenLinksDetails(baseUrl, links).size();
     }
 
-    // New method to get broken links with details
     public List<String> getBrokenLinksDetails(SiteAnalysis analysis) {
-        if (analysis == null) return List.of();
-        return analyzeLinks(analysis.getBaseUrl(), (CategorizedLink) analysis.getCategorizedLinks())
-                .get("broken_links");
+        if (analysis == null || analysis.getCategorizedLinks() == null) {
+            return Collections.emptyList();
+        }
+        return getBrokenLinksDetails(analysis.getBaseUrl(), (CategorizedLink) analysis.getCategorizedLinks());
     }
 
-    // Existing method (modified to be private since we'll use the new public methods)
+    public List<String> getBrokenLinksDetails(String baseUrl, CategorizedLink links) {
+        if (links == null) {
+            return Collections.emptyList();
+        }
+
+        try {
+            Map<String, List<String>> analysisResults = analyzeLinks(baseUrl, links);
+            return analysisResults.getOrDefault("broken_links", Collections.emptyList());
+        } catch (Exception e) {
+            log.error("Failed to analyze links: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
     Map<String, List<String>> analyzeLinks(String baseUrl, CategorizedLink links) {
         Map<String, List<String>> result = new HashMap<>();
         List<Future<LinkCheck>> futures = new ArrayList<>();
 
-        // Check all unique links
-        Set<String> uniqueLinks = new HashSet<>(links.getAllLinks());
-        List<String> allLinks = new ArrayList<>(uniqueLinks);
+        // Get all unique links first
+        Set<String> uniqueLinks = links.getAllLinks(); // This now returns a Set
 
-        for (String url : allLinks) {
+        // Check each unique link
+        for (String url : uniqueLinks) {
             futures.add(executor.submit(() -> checkLink(baseUrl, url)));
         }
 
         // Process results
         List<String> brokenLinks = new ArrayList<>();
-        List<String> duplicates = findDuplicates(links.getAllLinks());
+        List<String> duplicates = findDuplicates(links);
 
         for (Future<LinkCheck> future : futures) {
             try {
@@ -56,9 +69,10 @@ public class BrokenLinkAndDuplicateTracker {
                 if (!check.isValid()) {
                     brokenLinks.add(formatBrokenLink(check));
                 }
-            } catch (Exception e) {
+            } catch (InterruptedException | ExecutionException e) {
                 log.error("Link check failed: {}", e.getMessage());
                 brokenLinks.add("Error checking link: " + e.getMessage());
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -67,9 +81,40 @@ public class BrokenLinkAndDuplicateTracker {
         return result;
     }
 
+    private List<String> findDuplicates(CategorizedLink links) {
+        // Get all links from all categories
+        List<String> allLinks = new ArrayList<>();
+        allLinks.addAll(links.getNavigationLinks());
+        allLinks.addAll(links.getFooterLinks());
+        allLinks.addAll(links.getSidebarLinks());
+        allLinks.addAll(links.getBreadcrumbLinks());
+        allLinks.addAll(links.getOutboundLinks());
+        allLinks.addAll(links.getBacklinks());
+        allLinks.addAll(links.getAffiliateLinks());
+        allLinks.addAll(links.getSocialMediaLinks());
+        allLinks.addAll(links.getImageLinks());
+        allLinks.addAll(links.getScriptLinks());
+        allLinks.addAll(links.getStylesheetLinks());
+
+        // Find duplicates
+        Map<String, Integer> frequencyMap = new HashMap<>();
+        for (String url : allLinks) {
+            frequencyMap.put(url, frequencyMap.getOrDefault(url, 0) + 1);
+        }
+
+        return frequencyMap.entrySet().stream()
+                .filter(entry -> entry.getValue() > 1)
+                .map(entry -> formatDuplicate(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toList());
+    }
+
     private String formatBrokenLink(LinkCheck check) {
         return String.format("%s (Status: %d %s)",
                 check.url(), check.status(), check.message());
+    }
+
+    private String formatDuplicate(String url, int count) {
+        return String.format("%s appears %d times", url, count);
     }
 
     private LinkCheck checkLink(String baseUrl, String url) {
@@ -83,34 +128,13 @@ public class BrokenLinkAndDuplicateTracker {
 
             return new LinkCheck(url, response.statusCode(), response.statusMessage());
         } catch (IOException e) {
-            return new LinkCheck(url, 500, "Connection failed");
+            return new LinkCheck(url, 500, "Connection failed: " + e.getMessage());
         }
-    }
-
-    private List<String> findDuplicates(List<String> allLinks) {
-        Map<String, Integer> urlCounts = new HashMap<>();
-        List<String> duplicates = new ArrayList<>();
-
-        for (String url : allLinks) {
-            urlCounts.put(url, urlCounts.getOrDefault(url, 0) + 1);
-        }
-
-        for (Map.Entry<String, Integer> entry : urlCounts.entrySet()) {
-            if (entry.getValue() > 1) {
-                duplicates.add(formatDuplicate(entry.getKey(), entry.getValue()));
-            }
-        }
-
-        return duplicates;
-    }
-
-    private String formatDuplicate(String url, int count) {
-        return String.format("%s appears %d times", url, count);
     }
 
     private record LinkCheck(String url, int status, String message) {
         boolean isValid() {
-            return status == 200 || status == 301 || status == 302;
+            return status >= 200 && status < 400; // Consider all 2xx and 3xx as valid
         }
     }
 }

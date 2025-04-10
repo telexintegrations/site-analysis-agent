@@ -34,7 +34,7 @@ public class LinkCrawlAndCategorizationServiceImpl implements LinkCrawlAndCatego
                 .outboundLinks(extractExternalLinks(allLinks, baseUrl))
                 .socialMediaLinks(extractSocialMediaLinks(allLinks))
                 .affiliateLinks(extractAffiliateLinks(allLinks))
-                .backlinks(new ArrayList<>()) // To be populated separately
+                .backlinks(new HashSet<>()) // To be populated separately
                 .build();
     }
 
@@ -43,13 +43,13 @@ public class LinkCrawlAndCategorizationServiceImpl implements LinkCrawlAndCatego
         return brokenLinkTracker.analyzeLinks(baseUrl, links);
     }
 
-    private List<String> extractLinksInContext(Elements links, String... selectors) {
+    private Set<String> extractLinksInContext(Elements links, String... selectors) {
         return links.stream()
                 .filter(link -> Arrays.stream(selectors)
                         .anyMatch(selector -> isInContext(link, selector)))
                 .map(link -> link.absUrl("href"))
                 .filter(this::isValidLink)
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private boolean isInContext(Element link, String selector) {
@@ -58,28 +58,28 @@ public class LinkCrawlAndCategorizationServiceImpl implements LinkCrawlAndCatego
                         parent.className().contains(selector.replace(".", "")));
     }
 
-    private List<String> extractExternalLinks(Elements links, String baseUrl) {
+    private Set<String> extractExternalLinks(Elements links, String baseUrl) {
         return links.stream()
                 .map(link -> link.absUrl("href"))
                 .filter(url -> !url.startsWith(baseUrl) &&
                         !url.isBlank() &&
                         !url.startsWith("javascript:"))
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private List<String> extractSocialMediaLinks(Elements links) {
+    private Set<String> extractSocialMediaLinks(Elements links) {
         return links.stream()
                 .map(link -> link.absUrl("href"))
                 .filter(url -> SOCIAL_MEDIA_DOMAINS.stream()
                         .anyMatch(domain -> url.contains(domain)))
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private List<String> extractAffiliateLinks(Elements links) {
+    private Set<String> extractAffiliateLinks(Elements links) {
         return links.stream()
                 .map(link -> link.absUrl("href"))
                 .filter(url -> url.matches(".*(ref=|affiliate|partner|tag=).*"))
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private boolean isValidLink(String url) {

@@ -18,6 +18,9 @@ public class UserSession {
     private final List<ChatMessage> chatHistory = new ArrayList<>();
     private LocalDateTime lastActivity = LocalDateTime.now();
     private int analysisCount = 0;
+    private boolean awaitingCustomSchedule = false;
+
+
 
     // Session configuration
     private static final long SESSION_TIMEOUT_MINUTES = 30;
@@ -85,5 +88,18 @@ public class UserSession {
 
     public double getSeoScore() {
         return currentReport != null ? currentReport.getScore() : -1;
+    }
+
+
+    public void setAwaitingCustomSchedule() {
+        this.awaitingCustomSchedule = true;
+    }
+
+    public void clearAwaitingCustomSchedule() {
+        this.awaitingCustomSchedule = false;
+    }
+
+    public boolean isAwaitingCustomSchedule() {
+        return awaitingCustomSchedule;
     }
 }

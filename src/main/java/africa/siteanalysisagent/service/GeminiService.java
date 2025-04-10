@@ -1,4 +1,4 @@
-        package africa.siteanalysisagent.service;
+package africa.siteanalysisagent.service;
 
 import africa.siteanalysisagent.dto.*;
 import africa.siteanalysisagent.model.ChatMessage;
@@ -36,8 +36,6 @@ public class GeminiService {
     // Main Analysis Method ==============================================
     public SEOAnalysisResult analyzeSEO(String url, Map<String, List<String>> metaTags, CategorizedLink links) {
         try {
-            // 1. Calculate comprehensive score
-            int score = calculateSeoScore(metaTags, links, url);
 
             // 2. Get detailed analysis from Gemini
             String prompt = buildFullAnalysisPrompt(url, metaTags, links);
@@ -48,7 +46,7 @@ public class GeminiService {
 
             // 4. Return unified result
             return SEOAnalysisResult.success(
-                    score,
+                    url,
                     parsedAnalysis.get("strengths"),
                     parsedAnalysis.get("issues"),
                     parsedAnalysis.get("recommendations"),
@@ -252,58 +250,7 @@ public class GeminiService {
         return sb.toString();
     }
 
-    // Scoring Calculation ===============================================
-    private int calculateSeoScore(Map<String, List<String>> metaTags, CategorizedLink links, String baseUrl) {
-        int score = 0;
 
-        // On-Page SEO (40%)
-        score += calculateOnPageScore(metaTags);
-
-        // Technical SEO (30%)
-        score += calculateTechnicalScore(links, baseUrl);
-
-        // Content Quality (20%)
-        score += calculateContentScore(metaTags, links);
-
-        // User Experience (10%)
-        score += calculateUserExperienceScore(links);
-
-        return Math.min(score, 100);
-    }
-
-    private int calculateOnPageScore(Map<String, List<String>> metaTags) {
-        int score = 0;
-        if (hasCompleteMetaTags(metaTags)) score += 15;
-        if (hasGoodKeywords(metaTags)) score += 10;
-        if (hasProperHeadings(metaTags)) score += 10;
-        if (hasMobileViewport(metaTags)) score += 5;
-        return score;
-    }
-
-    private int calculateTechnicalScore(CategorizedLink links, String baseUrl) {
-        int score = 0;
-        if (links.getInternalLinkCount(baseUrl) > 15) score += 10;
-        if (!links.getBacklinks().isEmpty()) score += 8;
-        if (links.getResourceLinkCount() < 20) score += 7;
-        if (links.getStylesheetLinks().size() < 3) score += 5;
-        return score;
-    }
-
-    private int calculateContentScore(Map<String, List<String>> metaTags, CategorizedLink links) {
-        int score = 0;
-        if (hasGoodDescription(metaTags)) score += 10;
-        if (!links.getBreadcrumbLinks().isEmpty()) score += 5;
-        if (links.getSidebarLinks().size() > 2) score += 5;
-        return score;
-    }
-
-    private int calculateUserExperienceScore(CategorizedLink links) {
-        int score = 0;
-        if (links.getNavigationLinks().size() >= 5) score += 5;
-        if (!links.getFooterLinks().isEmpty()) score += 3;
-        if (!links.getSocialMediaLinks().isEmpty()) score += 2;
-        return score;
-    }
 
     // Validation Helpers ================================================
     private boolean hasCompleteMetaTags(Map<String, List<String>> metaTags) {
@@ -350,7 +297,7 @@ public class GeminiService {
             - Scripts: %d
             - CSS: %d
             - Total Internal Links: %d
-            - Total External Links: %%d
+            - Total External Links: %d
             - Total Resource Links: %d
             - All Links: %d
             
@@ -373,9 +320,7 @@ public class GeminiService {
                 links.getImageLinks().size(),
                 links.getScriptLinks().size(),
                 links.getStylesheetLinks().size(),
-                links.getInternalLinks(url),
-                links.getExternalLinks(url),
-                links.getAllLinks()
+                links.getAllLinks().size()
         );
     }
 

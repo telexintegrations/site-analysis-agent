@@ -2,12 +2,14 @@ package africa.siteanalysisagent.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @AllArgsConstructor
+@NoArgsConstructor
 public class ChatMessage {
     private String userId;               // User identifier (unchanged)
     private String userMessage;          // Renamed from 'message' for clarity

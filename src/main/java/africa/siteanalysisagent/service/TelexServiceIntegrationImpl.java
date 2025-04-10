@@ -51,7 +51,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                   "background_color": "#fff"
                 },
                 "integration_category": "CRM & Customer Support",
-                "integration_type": "modifier",
+                "integration_type": "interval",
                 "is_active": true,
                 "key_features": [
                   "Single page meta analysis",
@@ -130,14 +130,12 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
 
         String urlToScan = userUrls.get(channelId);
         try {
-            SiteAnalysis analysis = metaAnalysisService.analyzeSite(urlToScan);
-            SEOReport report = metaAnalysisService.generateFullReport(urlToScan);
+            SiteAnalysis analysis = metaAnalysisService.analyzeSite(channelId,urlToScan);
             userUrls.remove(channelId);
 
             return Map.of(
                     "url", urlToScan,
-                    "status", "success",
-                    "score", report.getScore()
+                    "status", "success"
             );
         } catch (Exception e) {
             log.error("❌ Error during scanning: {}", e.getMessage(), e);

@@ -14,6 +14,10 @@ public class UserIntent {
         TECH_ADVICE,        // "Best framework for SEO?"
         GENERAL_SEO,        // "What are backlinks?"
         BROKEN_LINK_HELP,   // "Why are my links broken?"
+        SCHEDULE_SCAN,
+        LIST_SCHEDULES,
+        CANCEL_SCHEDULE,
+        VIEW_REPORT,
         UNSUPPORTED         // Off-topic questions
     }
 

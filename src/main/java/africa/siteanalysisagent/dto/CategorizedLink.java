@@ -3,29 +3,27 @@ package africa.siteanalysisagent.dto;
 import lombok.Builder;
 import lombok.Data;
 
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Data
 @Builder
 public class CategorizedLink {
-    // Structural Links
-    private List<String> navigationLinks;
-    private List<String> footerLinks;
-    private List<String> sidebarLinks;
-    private List<String> breadcrumbLinks;
+    // Categories with deduplication
+    @Builder.Default private Set<String> navigationLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> footerLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> sidebarLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> breadcrumbLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> outboundLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> backlinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> affiliateLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> socialMediaLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> imageLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> scriptLinks = new LinkedHashSet<>();
+    @Builder.Default private Set<String> stylesheetLinks = new LinkedHashSet<>();
 
-    // Relationship Links
-    private List<String> outboundLinks;
-    private List<String> backlinks;
-    private List<String> affiliateLinks;
-    private List<String> socialMediaLinks;
-
-    // Resource Links
-    private List<String> imageLinks;
-    private List<String> scriptLinks;
-    private List<String> stylesheetLinks;
-
+    // Improved URL normalization
     // Helper methods
     public int getExternalLinkCount(String baseUrl) {
         return (int) getAllLinks().stream()
@@ -34,11 +32,11 @@ public class CategorizedLink {
                 .count();
     }
 
-    public List<String> getExternalLinks(String baseUrl) {
+    public Set<String> getExternalLinks(String baseUrl) {
         return getAllLinks().stream()
                 .filter(link -> !link.startsWith(baseUrl) &&
                         link.matches("^https?://.*"))
-                .toList();
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public int getInternalLinkCount(String baseUrl) {
@@ -47,42 +45,44 @@ public class CategorizedLink {
                 .count();
     }
 
-    public List<String> getInternalLinks(String baseUrl) {
+    public Set<String> getInternalLinks(String baseUrl) {
         return getAllLinks().stream()
                 .filter(link -> link.startsWith(baseUrl))
-                .toList();
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public int getResourceLinkCount() {
         return getResourceLinks().size();
     }
 
-    public List<String> getResourceLinks() {
+    public Set<String> getResourceLinks() {
         return Stream.of(
-                safeList(imageLinks),
-                safeList(scriptLinks),
-                safeList(stylesheetLinks)
-        ).flatMap(List::stream).toList();
+                        imageLinks,
+                        scriptLinks,
+                        stylesheetLinks
+                ).flatMap(Set::stream)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public int getTotalLinkCount() {
         return getAllLinks().size();
     }
 
-    public List<String> getAllLinks() {
+    public Set<String> getAllLinks() {
         return Stream.of(
-                safeList(navigationLinks),
-                safeList(footerLinks),
-                safeList(sidebarLinks),
-                safeList(breadcrumbLinks),
-                safeList(outboundLinks),
-                safeList(backlinks),
-                safeList(affiliateLinks),
-                safeList(socialMediaLinks),
-                safeList(imageLinks),
-                safeList(scriptLinks),
-                safeList(stylesheetLinks)
-        ).flatMap(List::stream).toList();
+                        navigationLinks,
+                        footerLinks,
+                        sidebarLinks,
+                        breadcrumbLinks,
+                        outboundLinks,
+                        backlinks,
+                        affiliateLinks,
+                        socialMediaLinks,
+                        imageLinks,
+                        scriptLinks,
+                        stylesheetLinks
+                ).flatMap(Set::stream)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public static String normalizeUrl(String baseUrl, String url) {
@@ -113,9 +113,5 @@ public class CategorizedLink {
 
         // Fallback - combine base URL and path
         return baseUrl.replaceAll("/+$", "") + "/" + url.replaceAll("^/+", "");
-    }
-
-    private List<String> safeList(List<String> list) {
-        return list != null ? list : List.of();
     }
 }

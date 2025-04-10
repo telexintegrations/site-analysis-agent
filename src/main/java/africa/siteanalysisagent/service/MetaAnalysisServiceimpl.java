@@ -9,13 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.stream.Collectors;
+        import java.util.concurrent.*;
+        import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,7 +32,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     private final Map<String, SEOReport> seoReportCache = new ConcurrentHashMap<>();
 
     @Override
-    public SiteAnalysis analyzeSite(String baseUrl) throws IOException {
+    public SiteAnalysis analyzeSite(String channelId, String baseUrl) throws IOException {
         // 1. Crawl all pages and their links
         Map<String, List<String>> siteMap = crawlSite(baseUrl);
 
@@ -54,55 +53,26 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
         // 4. Build comprehensive analysis
         SiteAnalysis analysis = buildSiteAnalysis(baseUrl, siteMap, linkStatusMap, categorizedPages);
         siteAnalysisCache.put(baseUrl, analysis);
-        sendSiteAnalysisToTelex(baseUrl, analysis);
+        sendSiteAnalysisToTelex(channelId, baseUrl, analysis);
 
         return analysis;
     }
 
-    @Override
-    public SEOReport generateFullReport(String url) throws IOException {
-        try {
-            Document document = webScrapeService.scrapeWithRetry(url, 3);
-
-            // 1. Extract meta tags
-            MetaTagExtractor metaTagExtractor = new MetaTagExtractor(document);
-            Map<String, List<String>> metaTags = metaTagExtractor.extractMetaTags();
-
-            // 2. Categorize links
-            CategorizedLink categorizedLinks = linkService.categorizeLinks(document);
-
-            // 3. Check for broken links
-            brokenLinkTracker.analyzeLinks(url, categorizedLinks);
-
-            // 4. Get AI analysis
-            Map<String, Object> aiAnalysis = (Map<String, Object>) geminiService.analyzeSEO(url, metaTags, categorizedLinks);
-
-            // 5. Build and cache report
-            SEOReport report = buildSEOReport(url, document, metaTags, categorizedLinks, aiAnalysis);
-            seoReportCache.put(url, report);
-
-            sendSeoReportToTelex(url, report);
-            return report;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Scraping was interrupted", e);
-        }
-    }
 
 
-    private void sendSiteAnalysisToTelex(String baseUrl, SiteAnalysis analysis) {
+    private void sendSiteAnalysisToTelex(String channelId,String baseUrl, SiteAnalysis analysis) {
         String message = String.format("""
-            🏷️ *Site Analysis Completed*
-            ━━━━━━━━━━━━━━━
-            • *URL:* %s
-            • *Pages Scanned:* %d
-            • *Total Links:* %d
-            • *Internal Links:* %d
-            • *External Links:* %d
-            • *Broken Links:* %d
-            ━━━━━━━━━━━━━━━
-            Use command 'analyze %s' for details
-            """,
+                        🏷️ *Site Analysis Completed*
+                        ━━━━━━━━━━━━━━━
+                        • *URL:* %s
+                        • *Pages Scanned:* %d
+                        • *Total Links:* %d
+                        • *Internal Links:* %d
+                        • *External Links:* %d
+                        • *Broken Links:* %d
+                        ━━━━━━━━━━━━━━━
+                        Use command 'analyze %s' for details
+                        """,
                 baseUrl,
                 analysis.getTotalPagesScanned(),
                 analysis.getTotalLinksFound(),
@@ -112,106 +82,110 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 baseUrl
         );
 
-        telexService.sendMessage("seo_reports", message)
-                .exceptionally(e -> {
-                    log.error("Failed to send analysis to Telex", e);
-                    return null;
-                });
-    }
+        telexService.sendMessage(channelId, message);
 
-    private void sendSeoReportToTelex(String url, SEOReport report) {
-        String message = String.format("""
-            📊 *SEO Report Generated*
-            ━━━━━━━━━━━━━━━
-            • *URL:* %s
-            • *Score:* %d/100
-            • *Top Issue:* %s
-            ━━━━━━━━━━━━━━━
-            Use command 'report %s' for details
-            """,
-                url,
-                report.getScore(),
-                getTopRecommendation(report.getRecommendations()),
-                url
-        );
 
-        telexService.sendMessage("seo_reports", message);
-    }
-
-    private String getTopRecommendation(String recommendations) {
-        if (recommendations == null || recommendations.isEmpty()) {
-            return "No critical issues found";
+        if (!analysis.getBrokenLinks().isEmpty()) {
+            sendBrokenLinksList(channelId, analysis.getBrokenLinks());
         }
-        return recommendations.split("\n")[0];
+
+        // 4. Send action prompt
+        List<Button> buttons = Arrays.asList(
+                new Button("📅 Schedule Scan", "schedule", "schedule_scan:" + baseUrl),
+                new Button("📊 SEO Report", "report", "seo_report:" + baseUrl),
+                new Button("🔧 Fix Issues", "fix", "fix_issues:" + baseUrl)
+        );
+        telexService.sendMessage(channelId,message,buttons);
+
+
+    }
+private void sendBrokenLinksList(String channelId, List<String> brokenLinks) {
+        try {
+            // Get unique broken links first
+            List<String> uniqueBrokenLinks = brokenLinks.stream()
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            int chunkSize = 15;
+            for (int i = 0; i < uniqueBrokenLinks.size(); i += chunkSize) {
+                List<String> chunk = uniqueBrokenLinks.subList(i, Math.min(i + chunkSize, uniqueBrokenLinks.size()));
+
+                StringBuilder message = new StringBuilder();
+                if (i == 0) {
+                    message.append("❌ *Broken Links Found (").append(uniqueBrokenLinks.size()).append(")*\n");
+                } else {
+                    message.append("(Continued) Links ").append(i+1).append("-")
+                            .append(Math.min(i+chunkSize, uniqueBrokenLinks.size())).append(":\n");
+                }
+
+                chunk.forEach(link -> message.append("• ").append(link).append("\n"));
+
+                if (i + chunkSize < uniqueBrokenLinks.size()) {
+                    message.append("\nMore broken links coming...");
+                }
+
+                telexService.sendMessage(channelId, message.toString());
+            }
+        } catch (Exception e) {
+            log.error("Failed to send broken links to Telex", e);
+        }
     }
 
     private SiteAnalysis buildSiteAnalysis(String baseUrl,
                                            Map<String, List<String>> siteMap,
                                            Map<String, Map<String, String>> linkStatusMap,
                                            Map<String, CategorizedLink> categorizedPages) {
-        // Calculate statistics from categorized links
-        int totalInternalLinks = categorizedPages.values().stream()
-                .mapToInt(cl -> cl.getInternalLinkCount(baseUrl))
-                .sum();
+        // Calculate statistics using Sets to avoid duplicates
+        Set<String> allActiveLinks = new HashSet<>();
+        Set<String> allBrokenLinks = new HashSet<>();
 
-        int totalExternalLinks = categorizedPages.values().stream()
-                .mapToInt(cl -> cl.getExternalLinkCount(baseUrl))
-                .sum();
+        // Process link status map
+        linkStatusMap.values().forEach(pageLinks ->
+                pageLinks.forEach((link, status) -> {
+                    if (status.startsWith("ACTIVE")) {
+                        allActiveLinks.add(link);
+                    } else if (status.startsWith("BROKEN") || status.startsWith("ERROR")) {
+                        allBrokenLinks.add(link);
+                    }
+                })
+        );
 
-        int totalResourceLinks = categorizedPages.values().stream()
-                .mapToInt(CategorizedLink::getResourceLinkCount)
-                .sum();
-
-        // Extract all active/broken links
-        List<String> allActiveLinks = linkStatusMap.values().stream()
-                .flatMap(m -> m.entrySet().stream())
-                .filter(e -> e.getValue().startsWith("ACTIVE"))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
-
-        List<String> allBrokenLinks = linkStatusMap.values().stream()
-                .flatMap(m -> m.entrySet().stream())
-                .filter(e -> e.getValue().startsWith("BROKEN") || e.getValue().startsWith("ERROR"))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
-
-        // Get all unique links by category
-        List<String> allInternalLinks = categorizedPages.values().stream()
+        // Get unique links by category
+        Set<String> allInternalLinks = categorizedPages.values().stream()
                 .flatMap(cl -> cl.getInternalLinks(baseUrl).stream())
-                .distinct()
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
 
-        List<String> allExternalLinks = categorizedPages.values().stream()
+        Set<String> allExternalLinks = categorizedPages.values().stream()
                 .flatMap(cl -> cl.getExternalLinks(baseUrl).stream())
-                .distinct()
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
 
-        List<String> allResourceLinks = categorizedPages.values().stream()
-                .flatMap(cl -> cl.getResourceLinks().stream())  // Changed to lambda expression
-                .distinct()
-                .collect(Collectors.toList());
+        Set<String> allResourceLinks = categorizedPages.values().stream()
+                .flatMap(cl -> cl.getResourceLinks().stream())
+                .collect(Collectors.toSet());
 
         return SiteAnalysis.builder()
                 .baseUrl(baseUrl)
                 .scannedPages(new ArrayList<>(siteMap.keySet()))
                 .totalPagesScanned(siteMap.size())
-                .totalLinksFound(totalInternalLinks + totalExternalLinks + totalResourceLinks)
+                .totalLinksFound(allInternalLinks.size() + allExternalLinks.size() + allResourceLinks.size())
                 .pageLinksMap(siteMap)
                 .linkStatusMap(flattenStatusMap(linkStatusMap))
-                .totalInternalLinks(totalInternalLinks)
-                .totalExternalLinks(totalExternalLinks)
-                .totalResourceLinks(totalResourceLinks)
+                .totalInternalLinks(allInternalLinks.size())
+                .totalExternalLinks(allExternalLinks.size())
+                .totalResourceLinks(allResourceLinks.size())
                 .totalActiveLinks(allActiveLinks.size())
                 .totalBrokenLinks(allBrokenLinks.size())
                 .categorizedLinks(categorizedPages)
-                .internalLinks(allInternalLinks)
-                .externalLinks(allExternalLinks)
-                .resourceLinks(allResourceLinks)
-                .activeLinks(allActiveLinks)
-                .brokenLinks(allBrokenLinks)
+                .internalLinks(new ArrayList<>(allInternalLinks))
+                .externalLinks(new ArrayList<>(allExternalLinks))
+                .resourceLinks(new ArrayList<>(allResourceLinks))
+                .activeLinks(new ArrayList<>(allActiveLinks))
+                .brokenLinks(new ArrayList<>(allBrokenLinks))
                 .detailedLinkStatus(linkStatusMap)
                 .build();
     }
+
+
     private SEOReport buildSEOReport(String url,
                                      Document document,
                                      Map<String, List<String>> metaTags,
@@ -229,22 +203,39 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
     }
 
     private Map<String, List<String>> crawlSite(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("Base URL cannot be null or blank");
+        }
+
         Map<String, List<String>> siteMap = new LinkedHashMap<>();
-        Set<String> visited = new HashSet<>();
+        Set<String> visitedUrls = new HashSet<>(); // Track visited pages
+        Set<String> allSeenLinks = new HashSet<>(); // Track all links ever seen
         Queue<String> queue = new LinkedList<>();
         queue.add(baseUrl);
 
-        while (!queue.isEmpty() && visited.size() < 50) {
+        while (!queue.isEmpty() && visitedUrls.size() < 50) {
             String currentUrl = queue.poll();
-            if (visited.add(currentUrl)) {
+            if (currentUrl == null) {
+                continue;
+            }
+
+            if (visitedUrls.add(currentUrl)) {
                 try {
                     Document doc = webScrapeService.scrapeWithRetry(currentUrl, 3);
-                    List<String> links = extractAllLinks(doc, baseUrl);
-                    siteMap.put(currentUrl, links);
+                    List<String> rawLinks = extractAllLinks(doc, baseUrl);
 
-                    // Add internal links to queue
-                    links.stream()
-                            .filter(link -> link.startsWith(baseUrl))
+                    // Process links: normalize and deduplicate
+                    List<String> uniqueLinks = rawLinks.stream()
+                            .filter(link -> link != null && !link.isBlank())
+                            .map(this::normalizeLink)
+                            .filter(link -> allSeenLinks.add(link)) // Only keep newly seen links
+                            .collect(Collectors.toList());
+
+                    siteMap.put(currentUrl, uniqueLinks);
+
+                    // Add internal links to queue (only if not already visited)
+                    uniqueLinks.stream()
+                            .filter(link -> link.startsWith(baseUrl) && !visitedUrls.contains(link))
                             .forEach(queue::offer);
 
                 } catch (IOException | InterruptedException e) {
@@ -258,6 +249,22 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             }
         }
         return siteMap;
+    }
+
+    private String normalizeLink(String link) {
+        if (link == null) return null;
+
+        // Basic normalization:
+        // 1. Remove URL fragments (#...)
+        // 2. Remove query parameters (?...)
+        // 3. Normalize trailing slashes
+        // 4. Convert to lowercase (optional)
+        String normalized = link.split("#")[0].split("\\?")[0];
+        normalized = normalized.endsWith("/")
+                ? normalized.substring(0, normalized.length() - 1)
+                : normalized;
+
+        return normalized.toLowerCase(); // Optional case normalization
     }
 
     private Map<String, Map<String, String>> validateSiteLinks(String baseUrl, Map<String, List<String>> siteMap) {
@@ -323,32 +330,4 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                         (existing, replacement) -> existing));
     }
 
-    private static class MetaTagExtractor {
-        private final Document document;
-
-        public MetaTagExtractor(Document document) {
-            this.document = document;
-        }
-
-        public Map<String, List<String>> extractMetaTags() {
-            Map<String, List<String>> metaTags = new LinkedHashMap<>();
-
-            // Core SEO Tags
-            metaTags.put("Core SEO Tags", List.of(
-                    formatTag("Title Tag", document.selectFirst("title")),
-                    formatTag("Meta Description", document.selectFirst("meta[name=description]")),
-                    formatTag("Meta Keywords", document.selectFirst("meta[name=keywords]"))
-            ));
-
-            return metaTags;
-        }
-
-        private String formatTag(String tagName, Element element) {
-            if (element != null) {
-                String content = element.tagName().equals("title") ? element.text() : element.attr("content");
-                return tagName + ": " + (content.isEmpty() ? "Not found" : content);
-            }
-            return tagName + ": Missing";
-        }
     }
-}
