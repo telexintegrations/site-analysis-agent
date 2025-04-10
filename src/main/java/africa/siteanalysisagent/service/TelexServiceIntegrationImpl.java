@@ -70,11 +70,11 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                     {
                         "label": "interval",
                         "type": "text",
-                        "default": "* * *",
+                        "description": "provide your interval",
+                        "default": "",
                         "required": true
                     }
                 ],
-                "bot": "true",
                 "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
                 "tick_url": ""
                 }
