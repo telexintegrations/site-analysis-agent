@@ -29,6 +29,15 @@
     <properties>
         <java.version>17</java.version>
     </properties>
+
+
+    <repositories>
+        <repository>
+            <id>google-cloud-aiplatform</id>
+            <url>https://google-cloud-pai-platform.storage.googleapis.com/repository/maven-releases/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
 
         <dependency>
@@ -76,11 +85,11 @@
         </dependency>
 
 
-        <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-aiplatform</artifactId>
-            <version>2.37.0</version> <!-- Use the latest version -->
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.google.cloud</groupId>-->
+<!--            <artifactId>google-cloud-aiplatform</artifactId>-->
+<!--            <version>3.11.0</version>-->
+<!--        </dependency>-->
 
 
 
