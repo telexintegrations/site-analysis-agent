@@ -3,9 +3,12 @@ package africa.siteanalysisagent.service;
 import africa.siteanalysisagent.dto.CategorizedLink;
 import org.jsoup.nodes.Document;
 
+import java.util.List;
+import java.util.Map;
+
 public interface LinkCrawlAndCategorizationService {
 
-    CategorizedLink categorizedLinkDto(Document document);
+    public CategorizedLink categorizeLinks(Document document);
 
-    void detectBrokenAndDuplicateLinks(String scanId, String channelId, CategorizedLink categorizedLinks);
+    public Map<String, List<String>> analyzeLinkIssues(String baseUrl, CategorizedLink links);
 }
