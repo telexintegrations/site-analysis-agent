@@ -95,7 +95,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 new Button("📊 SEO Report", "report", "seo_report:" + baseUrl),
                 new Button("🔧 Fix Issues", "fix", "fix_issues:" + baseUrl)
         );
-        telexService.sendMessage(channelId,message,buttons);
+        telexService.sendMessage(channelId,message);
 
 
     }
