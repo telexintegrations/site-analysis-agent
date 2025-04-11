@@ -5,12 +5,17 @@ import africa.siteanalysisagent.dto.Setting;
 import org.springframework.http.ResponseEntity;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public interface TelexService {
     CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message);
     CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> button);
-    void updateWebhookUrl(String channelId, List<Setting> settings);
+    public ResponseEntity<Map<String, Object>> handleIncomingMessage(
+            String channelId,
+            String webhookToken,
+            String message,
+            List<Button> buttons);
 
 
 

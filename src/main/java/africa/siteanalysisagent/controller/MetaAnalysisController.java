@@ -21,41 +21,55 @@ import java.util.*;
 public class MetaAnalysisController {
 
     private final LynxService lynxService;
-    private final TelexServiceIntegration telexService;
+    private final TelexService telexService;
+    private final TelexServiceIntegration integration;
 
     @PostMapping("/interact")
-    public ChatResponse handleUserMessage(@Valid
-            @RequestBody ChatMessage chatMessage) {
+    public ResponseEntity<?> handleUserMessage(
+            @Valid @RequestBody ChatMessage chatMessage,
+            @RequestHeader(value = "X-Telex-Channel-Id", required = false) String channelId,
+            @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken) {
 
-        //validate input
-        if(chatMessage.getUserMessage() == null || chatMessage.getUserMessage().isBlank()){
-          return ChatResponse.error("Message cannot be blank");
+        // Validate input
+        if (chatMessage.getUserMessage() == null || chatMessage.getUserMessage().isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ChatResponse.error("Message cannot be blank"));
         }
 
-        // Set default user ID if not provided
+        // Set default values if not provided
         if (chatMessage.getUserId() == null) {
             chatMessage.setUserId("guest-" + UUID.randomUUID());
         }
-
-        // Set timestamp if not provided
         if (chatMessage.getTimestamp() == null) {
             chatMessage.setTimestamp(LocalDateTime.now());
         }
 
         try {
+            // Process message through Lynx service
             ChatResponse response = lynxService.processMessage(chatMessage);
-            return ResponseEntity.ok(response).getBody();
+
+            // If coming from Telex channel, send response back
+            if (channelId != null && webhookToken != null) {
+                telexService.handleIncomingMessage(
+                        channelId,
+                        webhookToken,
+                        response.getMessage(),
+                        response.getButtons()
+                );
+            }
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
+            log.error("Error processing message", e);
             return ResponseEntity.internalServerError()
-                    .body(ChatResponse.error("Processing failed: " + e.getMessage())).getBody();
+                    .body(ChatResponse.error("Processing failed: " + e.getMessage()));
         }
     }
-
 
     @GetMapping("/telex")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
-            return ResponseEntity.ok(telexService.getTelexConfig());
+            return ResponseEntity.ok(integration.getTelexConfig());
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
                     .body(new ApiErrorResponse(
@@ -65,7 +79,5 @@ public class MetaAnalysisController {
                             LocalDate.now().toString()
                     ));
         }
-
     }
 }
-
