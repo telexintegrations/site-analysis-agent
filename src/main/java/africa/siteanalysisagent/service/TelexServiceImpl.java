@@ -25,36 +25,38 @@ public class TelexServiceImpl implements TelexService {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * Handles incoming webhook from Telex
-     */
+    @Override
     public ResponseEntity<Map<String, Object>> handleIncomingMessage(
             String channelId,
             String webhookToken,
             String message,
             List<Button> buttons) {
 
-        // Register the channel if new
+        // Validate channelId and webhookToken
+        if (channelId == null || channelId.isBlank()) {
+            log.error("Invalid channel ID provided");
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Channel ID cannot be null or empty"));
+        }
+
+        if (webhookToken == null || webhookToken.isBlank()) {
+            log.error("Invalid webhook token provided for channel {}", channelId);
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Webhook token cannot be null or empty"));
+        }
+
+        // Register the channel
         registerChannel(channelId, webhookToken);
         log.info("Message received from channel {}", channelId);
 
         // Process message asynchronously
         processMessageAsync(channelId, message, buttons);
 
-        // Return immediate acknowledgment
         return ResponseEntity.ok(Map.of(
                 "status", "processing",
                 "channel_id", channelId,
                 "timestamp", System.currentTimeMillis()
         ));
-    }
-
-    private void registerChannel(String channelId, String webhookToken) {
-        if (webhookToken == null || webhookToken.isBlank()) {
-            throw new IllegalArgumentException("Invalid webhook token");
-        }
-        channelTokens.put(channelId, webhookToken);
-        log.info("Registered channel {} with token {}", channelId, webhookToken);
     }
 
     private void processMessageAsync(String channelId, String message, List<Button> buttons) {
@@ -74,6 +76,14 @@ public class TelexServiceImpl implements TelexService {
 
     @Override
     public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> buttons) {
+        // Validate channelId
+        if (channelId == null || channelId.isBlank()) {
+            log.error("Attempt to send message with null/empty channelId");
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.badRequest().body("Invalid channel ID")
+            );
+        }
+
         return enqueueForChannel(channelId, () -> {
             String webhookToken = channelTokens.get(channelId);
             if (webhookToken == null) {
@@ -83,20 +93,25 @@ public class TelexServiceImpl implements TelexService {
                 );
             }
 
-            String webhookUrl = TELEX_WEBHOOK_BASE + "/" + webhookToken;
             return CompletableFuture.supplyAsync(() -> {
                 try {
+                    String webhookUrl = TELEX_WEBHOOK_BASE + "/" + webhookToken;
                     HttpHeaders headers = new HttpHeaders();
                     headers.setContentType(MediaType.APPLICATION_JSON);
 
                     Map<String, Object> payload = createPayload(channelId, message, buttons);
-                    log.debug("Sending to channel {} via {}", channelId, webhookUrl);
+                    log.info("Sending to channel {}: {}", channelId, message);
 
-                    return restTemplate.postForEntity(
+                    ResponseEntity<String> response = restTemplate.postForEntity(
                             webhookUrl,
                             new HttpEntity<>(payload, headers),
                             String.class
                     );
+
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        log.error("Delivery failed to {}: {}", channelId, response.getBody());
+                    }
+                    return response;
                 } catch (Exception e) {
                     log.error("Failed to send to channel {}", channelId, e);
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -104,6 +119,57 @@ public class TelexServiceImpl implements TelexService {
                 }
             }, telexExecutor);
         });
+    }
+
+    private void registerChannel(String channelId, String webhookToken) {
+        Objects.requireNonNull(channelId, "Channel ID cannot be null");
+        Objects.requireNonNull(webhookToken, "Webhook token cannot be null");
+
+        channelTokens.put(channelId, webhookToken);
+        log.info("Registered channel {} with token {}", channelId, webhookToken);
+    }
+
+    private CompletableFuture<ResponseEntity<String>> enqueueForChannel(
+            String channelId,
+            Supplier<CompletableFuture<ResponseEntity<String>>> operation) {
+
+        // Double-check channelId
+        if (channelId == null || channelId.isBlank()) {
+            log.error("Null channelId in enqueueForChannel");
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.badRequest().body("Invalid channel ID")
+            );
+        }
+
+        // Validate operation
+        Objects.requireNonNull(operation, "Operation supplier cannot be null");
+
+        CompletableFuture<ResponseEntity<String>> result = new CompletableFuture<>();
+
+        try {
+            channelQueues.compute(channelId, (key, existingFuture) -> {
+                CompletableFuture<Void> lastFuture = existingFuture != null
+                        ? existingFuture
+                        : CompletableFuture.completedFuture(null);
+
+                return lastFuture.thenComposeAsync(
+                        v -> operation.get()
+                                .thenAccept(result::complete)
+                                .exceptionally(ex -> {
+                                    log.error("Error processing message for channel {}", channelId, ex);
+                                    result.completeExceptionally(ex);
+                                    return null;
+                                }),
+                        telexExecutor
+                );
+            });
+        } catch (Exception e) {
+            log.error("Error in message queue for channel {}", channelId, e);
+            result.complete(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to process message"));
+        }
+
+        return result;
     }
 
     @Override
@@ -136,28 +202,4 @@ public class TelexServiceImpl implements TelexService {
                 .toList();
     }
 
-    private CompletableFuture<ResponseEntity<String>> enqueueForChannel(
-            String channelId,
-            Supplier<CompletableFuture<ResponseEntity<String>>> operation) {
-
-        CompletableFuture<ResponseEntity<String>> result = new CompletableFuture<>();
-
-        channelQueues.compute(channelId, (key, existingFuture) -> {
-            CompletableFuture<Void> lastFuture = existingFuture != null
-                    ? existingFuture
-                    : CompletableFuture.completedFuture(null);
-
-            return lastFuture.thenComposeAsync(
-                    v -> operation.get()
-                            .thenAccept(result::complete)
-                            .exceptionally(ex -> {
-                                result.completeExceptionally(ex);
-                                return null;
-                            }),
-                    telexExecutor
-            );
-        });
-
-        return result;
-    }
 }

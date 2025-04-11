@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -75,8 +76,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "required": true
                     }
                 ],
-                "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/scrape",
-                "tick_url": ""
+                "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/telex-webhook",
+                "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/interact"
                 }
             }
             """;
@@ -92,36 +93,80 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
     }
 
     @Override
-    public Map<String, Object> scrapeAndGenerateUrlReport(TelexUserRequest telexUserRequest) throws IOException {
+    public ResponseEntity<Map<String, Object>> scrapeAndGenerateUrlReport(TelexUserRequest telexUserRequest) throws IOException {
+        log.info("📩 Received Telex request from channel {}", telexUserRequest.channelId());
 
-        log.info("📩 Raw Telex Payload: {}", telexUserRequest);
-
-        // ✅ Safely create a TelexUserRequest instance
-        TelexUserRequest safeRequest = TelexUserRequest.fromRawData(
-                telexUserRequest.text(),
-                telexUserRequest.channelId(),
-                telexUserRequest.settings()
-        );
-
-        // Update webhook URL dynamically
-        telexService.updateWebhookUrl(telexUserRequest.channelId(), telexUserRequest.settings());
-
+        // 1. Process the incoming message
         ChatMessage chatMessage = new ChatMessage(
-                "telex-user-" + telexUserRequest.channelId(), // Unique user ID
-                telexUserRequest.text(),                       // User message
-                null,                                          // No initial response
-                LocalDateTime.now()                            // Current timestamp
+                "telex-user-" + telexUserRequest.channelId(),
+                telexUserRequest.text(),
+                null,
+                LocalDateTime.now()
         );
 
+        // 2. Get response from Lynx service
         ChatResponse response = lynxService.processMessage(chatMessage);
 
-        // 4. Return formatted response
-        return Map.of(
-                "response_type", response.getType().name(),
-                "message", response.getMessage(),
+        // 3. Send response back to Telex channel
+        telexService.sendMessage(
+                telexUserRequest.channelId(),
+                response.getMessage(),
+                response.getButtons()
+        ).thenAccept(res -> {
+            if (!res.getStatusCode().is2xxSuccessful()) {
+                log.error("Failed to send response to channel {}", telexUserRequest.channelId());
+            }
+        });
+
+        // 4. Return immediate acknowledgment
+        return ResponseEntity.ok(Map.of(
+                "status", "processing",
+                "channel_id", telexUserRequest.channelId(),
                 "timestamp", LocalDateTime.now().toString()
-        );
+        ));
     }
+
+    @Override
+    public ResponseEntity<Map<String, Object>> handleTelexWebhook(
+            String channelId,
+            String webhookToken,
+            String message) {
+
+        try {
+            // 1. Process the message
+            ChatMessage chatMessage = new ChatMessage(
+                    "telex-user-" + channelId,
+                    message,
+                    null,
+                    LocalDateTime.now()
+            );
+
+            ChatResponse response = lynxService.processMessage(chatMessage);
+
+            // 2. Send response back to Telex
+            telexService.sendMessage(
+                    channelId,
+                    response.getMessage(),
+                    response.getButtons()
+            );
+
+            // 3. Return acknowledgment
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "channel_id", channelId,
+                    "timestamp", LocalDateTime.now().toString()
+            ));
+        } catch (Exception e) {
+            log.error("Error processing Telex webhook", e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of(
+                            "status", "error",
+                            "message", e.getMessage(),
+                            "channel_id", channelId
+                    ));
+        }
+    }
+
 
     private Map<String, Object> processConfirmedScan(String channelId) {
         if (!userUrls.containsKey(channelId)) {
