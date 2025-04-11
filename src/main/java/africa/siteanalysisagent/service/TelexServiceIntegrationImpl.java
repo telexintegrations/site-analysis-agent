@@ -81,7 +81,7 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 }
             }
             """;
-    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
+
 
 
     @Override
