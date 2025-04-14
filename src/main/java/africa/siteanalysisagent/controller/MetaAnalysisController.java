@@ -32,15 +32,27 @@ public class MetaAnalysisController {
             @RequestBody Map<String, Object> requestBody) {
 
         // 1. Extract Telex parameters from THEIR format
-        String channelId = (String) requestBody.get("channel_id"); // Note: "channel_id" not "channelId"
-        String userMessage = extractMessageFromTelexFormat(requestBody);
-
-        // 2. Validate
-        if (channelId == null) {
+        String channelId = (String) requestBody.get("channel_id");
+        if (channelId == null || channelId.isBlank()) {
             return CompletableFuture.completedFuture(
-                    ResponseEntity.badRequest().body("Missing channel_id in request")
+                    ResponseEntity.badRequest().body("Missing or empty channel_id")
             );
         }
+        String userMessage;
+        try {
+            userMessage = extractMessageFromTelexFormat(requestBody);
+            if (userMessage == null || userMessage.isBlank()) {
+                return CompletableFuture.completedFuture(
+                        ResponseEntity.badRequest().body("Message content cannot be empty")
+                );
+            }
+        } catch (Exception e) {
+            log.error("Message extraction failed", e);
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.badRequest().body("Invalid message format")
+            );
+        }
+
 
         // 3. Process message
         ChatMessage chatMessage = new ChatMessage();
@@ -56,15 +68,29 @@ public class MetaAnalysisController {
     }
 
     private String extractMessageFromTelexFormat(Map<String, Object> requestBody) {
-        try {
-            // Handle HTML-formatted message
-            String rawHtml = (String) requestBody.get("message");
-            return Jsoup.parse(rawHtml).text(); // Extract plain text
-        } catch (Exception e) {
-            log.warn("Failed to parse Telex message", e);
-            return "";
+        // 1. Get raw message
+        Object rawMessage = requestBody.get("message");
+        if (rawMessage == null) {
+            throw new IllegalArgumentException("Missing message field");
         }
+
+        // 2. Handle different message formats
+        if (rawMessage instanceof String) {
+            String messageStr = (String) rawMessage;
+            if (messageStr.isBlank()) {
+                throw new IllegalArgumentException("Empty message content");
+            }
+
+            // 3. Parse HTML if needed
+            if (messageStr.startsWith("<") && messageStr.endsWith(">")) {
+                return Jsoup.parse(messageStr).text();
+            }
+            return messageStr;
+        }
+
+        throw new IllegalArgumentException("Unsupported message type: " + rawMessage.getClass());
     }
+
 
     @PostMapping("/telex-webhook")
     public ResponseEntity<Map<String, Object>> handleTelexWebhook(

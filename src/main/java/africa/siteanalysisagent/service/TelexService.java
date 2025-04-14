@@ -9,9 +9,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public interface TelexService {
-    CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message);
-    CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> button);
-    public void registerChannel(String channelId, String webhookToken);
+    CompletableFuture<ResponseEntity<String>> sendMessage(String channel_id, String message);
+    CompletableFuture<ResponseEntity<String>> sendMessage(String channel_id, String message, List<Button> button);
 
 
 
