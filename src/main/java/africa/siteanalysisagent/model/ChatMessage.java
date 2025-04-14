@@ -18,12 +18,13 @@ public class ChatMessage {
     private String intentType;           // NEW: Stores the detected intent (NEW_ANALYSIS, REPORT_QUESTION, etc.)
     private String contextUrl;           // NEW: URL being discussed (if applicable)
     private List<String> messageTags;    // NEW: For categorizing messages (e.g., ["seo", "technical", "broken-links"])
+    private String channelId;
 
 
 
     // Keeps backward compatibility with existing code
-    public ChatMessage(String userId, String userMessage, String botResponse, LocalDateTime timestamp) {
-        this(userId, userMessage, botResponse, timestamp, null, null, null);
+    public ChatMessage(String userId, String userMessage, String botResponse, LocalDateTime timestamp, String channelId) {
+        this(userId, userMessage, botResponse, timestamp, null, null, null, channelId);
     }
 
     public String getUserMessage() {

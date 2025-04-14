@@ -77,8 +77,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                         "required": true
                     }
                 ],
-                "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/interact",
-                "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/telex-webhook"
+                "target_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/telex-webhook",
+                "tick_url": "https://site-analysis-agent.onrender.com/api/v1/meta-analysis/interact"
                 }
             }
             """;
@@ -102,7 +102,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 "telex-user-" + telexUserRequest.channelId(),
                 telexUserRequest.text(),
                 null,
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                telexUserRequest.channelId()
         );
 
         // 2. Get response from Lynx service
@@ -149,7 +150,8 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
                 "telex-user-" + channelId,
                 message,
                 null,
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                channelId
         );
 
         try {

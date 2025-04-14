@@ -56,13 +56,33 @@ public class LynxServiceImpl implements LynxService {
 
 @Override
     public ChatResponse processMessage(ChatMessage chatMessage) {
+
+    if (chatMessage == null) {
+        log.error("Received null chat message");
+        return ChatResponse.error("Invalid message format");
+    }
+
         String userId = chatMessage.getUserId();
         String userMessage = chatMessage.getUserMessage();
+        String channelId = chatMessage.getChannelId();
 
-        UserSession session = userSessions.computeIfAbsent(userId, k -> new UserSession(userId));
+    if (userId == null || userId.isBlank()) {
+        log.error("Missing or empty user ID");
+        return ChatResponse.error("User identification failed");
+    }
+
+
+    UserSession session = userSessions.computeIfAbsent(userId, k -> new UserSession(userId));
         session.updateLastActivity();
 
         try {
+
+            if (userMessage == null || userMessage.isBlank()) {
+                log.warn("Empty message received from user {}", userId);
+                return ChatResponse.prompt("Please provide a message or select an option");
+            }
+
+
             // Handle button actions
             if (userMessage.startsWith("button:")) {
                 return handleButtonAction(userId, userMessage, session);
@@ -112,7 +132,8 @@ public class LynxServiceImpl implements LynxService {
                     userId,
                     userMessage,
                     response.getMessage(),
-                    LocalDateTime.now()
+                    LocalDateTime.now(),
+                    channelId
             ));
 
             return response;
@@ -185,7 +206,7 @@ public class LynxServiceImpl implements LynxService {
 
             session.setCurrentAnalysis(analysis);
             session.setCurrentUrl(url);
-            session.addMessage(new ChatMessage(userId, message, null, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(userId, message, null, LocalDateTime.now(), session.getChannelId()));
 
 
 // 4. Return response
@@ -566,7 +587,7 @@ public class LynxServiceImpl implements LynxService {
                     session.getChatHistory()
             );
 
-            session.addMessage(new ChatMessage(userId, message, response, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(userId, message, response, LocalDateTime.now(), session.getChannelId()));
 
             return ChatResponse.forReportQuestion(
                     response,
@@ -589,7 +610,7 @@ public class LynxServiceImpl implements LynxService {
                     session.getChatHistory()
             );
 
-            session.addMessage(new ChatMessage(userId, message, fixes, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(userId, message, fixes, LocalDateTime.now(), session.getChannelId()));
 
             return ChatResponse.forFixSuggestions(
                     "\uD83D\uDEE0\uFE0F Recommended Fixes:\\n" + fixes,
@@ -620,7 +641,7 @@ public class LynxServiceImpl implements LynxService {
                     session.getChatHistory()
             );
 
-            session.addMessage(new ChatMessage(userId, message, analysis, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(userId, message, analysis, LocalDateTime.now(), session.getChannelId()));
 
             return ChatResponse.forReportQuestion(
                     "\uD83D\uDD17 Broken Link Analysis:\\n" + analysis,
@@ -640,7 +661,7 @@ public class LynxServiceImpl implements LynxService {
                     session.getChatHistory()
             );
 
-            session.addMessage(new ChatMessage(session.getUserId(), message, advice, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(session.getUserId(), message, advice, LocalDateTime.now(), session.getChannelId()));
             return ChatResponse.forTechAdvice(advice);
         }catch (Exception e){
             log.error("Tech advice failed", e);
@@ -654,7 +675,7 @@ public class LynxServiceImpl implements LynxService {
                     message,
                     session.getChatHistory()
             );
-            session.addMessage(new ChatMessage(session.getUserId(), message, advice, LocalDateTime.now()));
+            session.addMessage(new ChatMessage(session.getUserId(), message, advice, LocalDateTime.now(), session.getChannelId()));
             return ChatResponse.forGeneral(advice);
         }catch (Exception e){
             log.error("SEO advice failed", e);
