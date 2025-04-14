@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 
 @Service
@@ -132,61 +133,63 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             String webhookToken,
             String message) {
 
-        try {
-            // 1. Process the message
-            ChatMessage chatMessage = new ChatMessage(
-                    "telex-user-" + channelId,
-                    message,
-                    null,
-                    LocalDateTime.now()
-            );
+        // 1. Validate input
+        if (channelId == null || channelId.isBlank()) {
+            return errorResponse("Channel ID is required", null);
+        }
+        if (message == null || message.isBlank()) {
+            return errorResponse("Message cannot be empty", channelId);
+        }
 
+        // 2. Register the channel (if not already registered)
+        telexService.registerChannel(channelId, webhookToken);
+
+        // 3. Process the message
+        ChatMessage chatMessage = new ChatMessage(
+                "telex-user-" + channelId,
+                message,
+                null,
+                LocalDateTime.now()
+        );
+
+        try {
             ChatResponse response = lynxService.processMessage(chatMessage);
 
-            // 2. Send response back to Telex
-            telexService.sendMessage(
-                    channelId,
-                    response.getMessage(),
-                    response.getButtons()
-            );
+            // 4. Send response back to Telex
+            telexService.sendMessage(channelId, response.getMessage(), response.getButtons())
+                    .exceptionally(ex -> {
+                        log.error("Failed to send response to channel {}", channelId, ex);
+                        return null;
+                    });
 
-            // 3. Return acknowledgment
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "channel_id", channelId,
-                    "timestamp", LocalDateTime.now().toString()
-            ));
+            return successResponse(channelId);
+
         } catch (Exception e) {
-            log.error("Error processing Telex webhook", e);
-            return ResponseEntity.internalServerError()
-                    .body(Map.of(
-                            "status", "error",
-                            "message", e.getMessage(),
-                            "channel_id", channelId
-                    ));
+            log.error("Error processing message for channel {}", channelId, e);
+            // Send error message back to Telex
+            telexService.sendMessage(channelId, "Error processing your request: " + e.getMessage(), null);
+            return errorResponse("Processing failed", channelId);
         }
     }
 
-
-    private Map<String, Object> processConfirmedScan(String channelId) {
-        if (!userUrls.containsKey(channelId)) {
-            return Map.of("error", "No URL found. Please enter a valid URL first.");
-        }
-
-        String urlToScan = userUrls.get(channelId);
-        try {
-            SiteAnalysis analysis = metaAnalysisService.analyzeSite(channelId,urlToScan);
-            userUrls.remove(channelId);
-
-            return Map.of(
-                    "url", urlToScan,
-                    "status", "success"
-            );
-        } catch (Exception e) {
-            log.error("❌ Error during scanning: {}", e.getMessage(), e);
-            return Map.of("error", "Failed to process scan", "status", "failed");
-        }
+    private ResponseEntity<Map<String, Object>> successResponse(String channelId) {
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "channel_id", channelId,
+                "timestamp", LocalDateTime.now().toString()
+        ));
     }
+
+    private ResponseEntity<Map<String, Object>> errorResponse(String error, String channelId) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "error");
+        response.put("message", error);
+        if (channelId != null) {
+            response.put("channel_id", channelId);
+        }
+        return ResponseEntity.badRequest().body(response);
+    }
+
 
     private boolean isValidUrl(String text) {
         return text != null && !text.isEmpty() && URL_PATTERN.matcher(text).matches();
