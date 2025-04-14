@@ -50,7 +50,7 @@ public class WebScrapeService {
         throw new IOException("Failed after " + maxRetries + " attempts", lastException);
     }
 
-    public boolean isValidUrlForScraping(String url) {
+    boolean isValidUrlForScraping(String url) {
         try {
             URI uri = new URI(url);
             String scheme = uri.getScheme();

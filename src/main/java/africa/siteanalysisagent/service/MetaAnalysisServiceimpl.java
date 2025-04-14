@@ -116,14 +116,6 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
             sendBrokenLinksList(channelId, analysis.getBrokenLinks());
         }
 
-        // 4. Send action prompt
-        List<Button> buttons = Arrays.asList(
-                new Button("📅 Schedule Scan", "schedule", "schedule_scan:" + baseUrl),
-                new Button("📊 SEO Report", "report", "seo_report:" + baseUrl),
-                new Button("🔧 Fix Issues", "fix", "fix_issues:" + baseUrl)
-        );
-        telexService.sendMessage(channelId,message, buttons);
-
 
     }
 private void sendBrokenLinksList(String channelId, List<String> brokenLinks) {

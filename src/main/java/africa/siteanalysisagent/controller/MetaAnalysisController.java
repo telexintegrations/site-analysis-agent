@@ -32,63 +32,66 @@ public class MetaAnalysisController {
             @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken) {
 
         // Set default values for the chat message
-        if (chatMessage.getUserId() == null) {
-            chatMessage.setUserId(channelId != null ?
-                    "telex-user-" + channelId :
-                    "guest-" + UUID.randomUUID());
+        if (channelId == null || webhookToken == null) {
+            log.warn("Missing Telex headers - cannot process message");
+            return CompletableFuture.completedFuture(
+                    ResponseEntity.badRequest().body("Telex channel ID and token required")
+            );
         }
-        if (chatMessage.getTimestamp() == null) {
-            chatMessage.setTimestamp(LocalDateTime.now());
-        }
+
+        chatMessage.setUserId(channelId);
+        chatMessage.setTimestamp(LocalDateTime.now());
+
 
         return CompletableFuture.supplyAsync(() -> {
             try {
                 ChatResponse response = lynxService.processMessage(chatMessage);
 
-                // Only try to send back to Telex if we have both channel ID and token
-                if (channelId != null && webhookToken != null) {
-                    telexService.registerChannel(channelId, webhookToken);
-                    telexService.sendMessage(channelId, response.getMessage(), response.getButtons())
-                            .exceptionally(ex -> {
-                                log.error("Failed to send to Telex channel {}: {}", channelId, ex.getMessage());
-                                return null;
-                            });
-                }
 
-                return ResponseEntity.ok(response);
-
+                    telexService.sendMessage(channelId, response.getMessage());
+                    return ResponseEntity.ok(response);
             } catch (Exception e) {
                 log.error("Error processing message", e);
-
-                // If we have a channel ID, try to send the error back to Telex
-                if (channelId != null && webhookToken != null) {
-                    telexService.sendMessage(channelId, "Error: " + e.getMessage(), null);
-                }
-
-                return ResponseEntity.internalServerError()
-                        .body(ChatResponse.error("Processing failed: " + e.getMessage()));
+            telexService.sendMessage(channelId, "Error: " + e.getMessage());
+            return ResponseEntity.internalServerError().build();
             }
         });
     }
 
     @PostMapping("/telex-webhook")
     public ResponseEntity<Map<String, Object>> handleTelexWebhook(
-            @RequestHeader(value = "X-Telex-Channel-Id", required = false) String channelId,
-            @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken,
-            @RequestBody String message) {
+            @RequestBody TelexUserRequest request) {
 
-        if (channelId == null || webhookToken == null) {
-            log.warn("Missing Telex headers in webhook request");
-            return ResponseEntity.badRequest()
-                    .body(Map.of(
-                            "status", "error",
-                            "message", "X-Telex-Channel-Id and X-Telex-Webhook-Token headers are required",
-                            "timestamp", LocalDateTime.now()
-                    ));
+        // Extract channel info from the incoming webhook request
+        String channelId = request.channelId();
+        String webhookToken = request.webhookToken();
+        String message = request.text();
+
+        // Validate required fields
+        if (channelId == null || channelId.isBlank()) {
+            log.error("Missing channelId in Telex webhook request");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", "channelId is required in webhook request",
+                    "timestamp", LocalDateTime.now().toString()
+            ));
         }
 
-        return telexServiceIntegration.handleTelexWebhook(channelId, webhookToken, message);
+        // Process the webhook
+        try {
+            log.info("Received webhook from channel {}", channelId);
+            return telexServiceIntegration.handleTelexWebhook(channelId, webhookToken, message);
+        } catch (Exception e) {
+            log.error("Error processing webhook from channel {}: {}", channelId, e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "Failed to process webhook",
+                    "channelId", channelId,
+                    "timestamp", LocalDateTime.now().toString()
+            ));
+        }
     }
+
 
     @GetMapping("/telex-config")
     public ResponseEntity<?> getTelexConfiguration() {

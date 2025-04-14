@@ -35,7 +35,7 @@ public class TelexServiceImpl implements TelexService {
     public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> buttons) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String token = channelTokens.get("01961ccd-cf6a-7891-afc6-260274df9a90");
+                String token = channelTokens.get(channelId);
                 if (token == null) {
                     log.error("Channel {} not registered", channelId);
                     return ResponseEntity.badRequest().body("Channel not registered");
