@@ -142,8 +142,6 @@ public class TelexServiceIntegrationImpl implements TelexServiceIntegration {
             return errorResponse("Message cannot be empty", channelId);
         }
 
-        // 2. Register the channel (if not already registered)
-        telexService.registerChannel(channelId, webhookToken);
 
         // 3. Process the message
         ChatMessage chatMessage = new ChatMessage(

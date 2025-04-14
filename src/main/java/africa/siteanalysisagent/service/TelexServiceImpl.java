@@ -18,7 +18,6 @@ public class TelexServiceImpl implements TelexService {
 
     private static final String TELEX_WEBHOOK_BASE = "https://ping.telex.im/v1/webhooks";
     private final RestTemplate restTemplate;
-    private final Map<String, String> channelTokens = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<Void>> channelQueues = new ConcurrentHashMap<>();
     private final Executor telexExecutor = Executors.newFixedThreadPool(4);
 
@@ -32,20 +31,14 @@ public class TelexServiceImpl implements TelexService {
     }
 
     @Override
-    public CompletableFuture<ResponseEntity<String>> sendMessage(String channelId, String message, List<Button> buttons) {
+    public CompletableFuture<ResponseEntity<String>> sendMessage(String channel_id, String message, List<Button> buttons) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String token = channelTokens.get(channelId);
-                if (token == null) {
-                    log.error("Channel {} not registered", channelId);
-                    return ResponseEntity.badRequest().body("Channel not registered");
-                }
-
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("event_name", "web_scraper");
                 payload.put("username", "site-analyzer");
                 payload.put("status", "success");
-                payload.put("channel_id", channelId);
+                payload.put("channel_id", channel_id);
                 payload.put("message", message);
                 payload.put("timestamp", System.currentTimeMillis());
 
@@ -64,27 +57,24 @@ public class TelexServiceImpl implements TelexService {
                 headers.setContentType(MediaType.APPLICATION_JSON);
 
                 ResponseEntity<String> response = restTemplate.postForEntity(
-                        TELEX_WEBHOOK_BASE + "/" + token,
+                        TELEX_WEBHOOK_BASE + "/" + channel_id,
                         new HttpEntity<>(payload, headers),
                         String.class
                 );
 
                 if (!response.getStatusCode().is2xxSuccessful()) {
-                    log.error("Failed to send to channel {}: {}", channelId, response.getBody());
+                    log.error("Failed to send to channel {}: {}", channel_id, response.getBody());
                 }
                 return response;
 
             } catch (Exception e) {
-                log.error("Error sending to channel {}", channelId, e);
+                log.error("Error sending to channel {}", channel_id, e);
                 return ResponseEntity.internalServerError().body("Failed to send message");
             }
         }, telexExecutor);
     }
 
-    public void registerChannel(String channelId, String webhookToken) {
-        channelTokens.put(channelId, webhookToken);
-        log.info("Registered channel {}", channelId);
-    }
+
 
 
 }
