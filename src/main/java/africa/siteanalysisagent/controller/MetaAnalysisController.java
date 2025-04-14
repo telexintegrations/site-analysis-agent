@@ -4,6 +4,7 @@ import africa.siteanalysisagent.dto.*;
 import africa.siteanalysisagent.model.ChatMessage;
 import africa.siteanalysisagent.model.ChatResponse;
 import africa.siteanalysisagent.service.*;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,15 +28,18 @@ public class MetaAnalysisController {
 
     @PostMapping("/interact")
     public CompletableFuture<ResponseEntity<?>> handleUserMessage(
+            HttpServletRequest request,
             @Valid @RequestBody ChatMessage chatMessage,
-            @RequestHeader(value = "X-Telex-Channel-Id", required = false) String channelId,
-            @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken) {
+            @RequestHeader(value = "Telex-Channel-Id", required = false) String channelId,
+            @RequestHeader(value = "Telex-Webhook-Token", required = false) String webhookToken) {
 
-        // Set default values for the chat message
+        Collections.list(request.getHeaderNames())
+                .forEach(header -> log.info("Header: {} = {}", header, request.getHeader(header)));
+
         if (channelId == null || webhookToken == null) {
-            log.warn("Missing Telex headers - cannot process message");
+            log.error("Missing Telex headers. Received headers: {}", request.getHeaderNames());
             return CompletableFuture.completedFuture(
-                    ResponseEntity.badRequest().body("Telex channel ID and token required")
+                    ResponseEntity.badRequest().body("Missing required headers")
             );
         }
 
