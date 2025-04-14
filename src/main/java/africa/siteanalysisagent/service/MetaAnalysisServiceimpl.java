@@ -12,6 +12,8 @@ import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.*;
         import java.util.concurrent.*;
         import java.util.stream.Collectors;
@@ -33,31 +35,56 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
 
     @Override
     public SiteAnalysis analyzeSite(String channelId, String baseUrl) throws IOException {
-        // 1. Crawl all pages and their links
-        Map<String, List<String>> siteMap = crawlSite(baseUrl);
-
-        // 2. Validate all links across all pages
-        Map<String, Map<String, String>> linkStatusMap = validateSiteLinks(baseUrl, siteMap);
-
-        // 3. Categorize and analyze links
-        Map<String, CategorizedLink> categorizedPages = new HashMap<>();
-        siteMap.forEach((pageUrl, links) -> {
-            try {
-                Document doc = webScrapeService.scrapeWithRetry(pageUrl, 3);
-                categorizedPages.put(pageUrl, linkService.categorizeLinks(doc));
-            } catch (IOException | InterruptedException e) {
-                log.error("Failed to categorize links for {}", pageUrl, e);
+        try {
+            // Validate base URL first
+            if (!webScrapeService.isValidUrlForScraping(baseUrl)) {
+                throw new IllegalArgumentException("Invalid base URL: " + baseUrl);
             }
-        });
 
-        // 4. Build comprehensive analysis
-        SiteAnalysis analysis = buildSiteAnalysis(baseUrl, siteMap, linkStatusMap, categorizedPages);
-        siteAnalysisCache.put(baseUrl, analysis);
-        sendSiteAnalysisToTelex(channelId, baseUrl, analysis);
+            // 1. Crawl all pages and their links
+            Map<String, List<String>> siteMap = crawlSite(baseUrl);
 
-        return analysis;
+            // 2. Validate all links across all pages
+            Map<String, Map<String, String>> linkStatusMap = validateSiteLinks(baseUrl, siteMap);
+
+            // 3. Categorize and analyze links
+            Map<String, CategorizedLink> categorizedPages = new ConcurrentHashMap<>();
+            List<Future<?>> categorizationFutures = new ArrayList<>();
+
+            siteMap.forEach((pageUrl, links) -> {
+                categorizationFutures.add(executor.submit(() -> {
+                    try {
+                        Document doc = Jsoup.parse(webScrapeService.scrapeWithRetry(pageUrl));
+                        categorizedPages.put(pageUrl, linkService.categorizeLinks(doc));
+                    } catch (Exception e) {
+                        log.error("Failed to categorize links for {}", pageUrl, e);
+                    }
+                }));
+            });
+
+            // Wait for categorization to complete
+            for (Future<?> future : categorizationFutures) {
+                try {
+                    future.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Analysis interrupted", e);
+                } catch (ExecutionException e) {
+                    log.error("Error during categorization", e);
+                }
+            }
+
+            // 4. Build comprehensive analysis
+            SiteAnalysis analysis = buildSiteAnalysis(baseUrl, siteMap, linkStatusMap, categorizedPages);
+            siteAnalysisCache.put(baseUrl, analysis);
+            sendSiteAnalysisToTelex(channelId, baseUrl, analysis);
+
+            return analysis;
+        } catch (Exception e) {
+            log.error("Site analysis failed for {}", baseUrl, e);
+            throw new IOException("Error during analysis");
+        }
     }
-
 
 
     private void sendSiteAnalysisToTelex(String channelId,String baseUrl, SiteAnalysis analysis) {
@@ -95,7 +122,7 @@ public class MetaAnalysisServiceimpl implements MetaAnalysisService {
                 new Button("📊 SEO Report", "report", "seo_report:" + baseUrl),
                 new Button("🔧 Fix Issues", "fix", "fix_issues:" + baseUrl)
         );
-        telexService.sendMessage(channelId,message);
+        telexService.sendMessage(channelId,message, buttons);
 
 
     }
@@ -202,18 +229,28 @@ private void sendBrokenLinksList(String channelId, List<String> brokenLinks) {
                 .build();
     }
 
-    private Map<String, List<String>> crawlSite(String baseUrl) {
+    private Map<String, List<String>> crawlSite(String baseUrl) throws IOException, InterruptedException {
         if (baseUrl == null || baseUrl.isBlank()) {
             throw new IllegalArgumentException("Base URL cannot be null or blank");
         }
 
+        // Normalize the base URL first
+        baseUrl = normalizeLink(baseUrl);
+        if (!webScrapeService.isValidUrlForScraping(baseUrl)) {
+            throw new IllegalArgumentException("Invalid base URL: " + baseUrl);
+        }
+
         Map<String, List<String>> siteMap = new LinkedHashMap<>();
-        Set<String> visitedUrls = new HashSet<>(); // Track visited pages
-        Set<String> allSeenLinks = new HashSet<>(); // Track all links ever seen
+        Set<String> visitedUrls = new HashSet<>();
+        Set<String> allSeenLinks = new HashSet<>();
         Queue<String> queue = new LinkedList<>();
         queue.add(baseUrl);
 
         while (!queue.isEmpty() && visitedUrls.size() < 50) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Crawling interrupted");
+            }
+
             String currentUrl = queue.poll();
             if (currentUrl == null) {
                 continue;
@@ -221,30 +258,44 @@ private void sendBrokenLinksList(String channelId, List<String> brokenLinks) {
 
             if (visitedUrls.add(currentUrl)) {
                 try {
-                    Document doc = webScrapeService.scrapeWithRetry(currentUrl, 3);
+                    // Get document with retry logic
+                    String htmlContent = webScrapeService.scrapeWithRetry(currentUrl, 3);
+                    Document doc = Jsoup.parse(htmlContent);
+
                     List<String> rawLinks = extractAllLinks(doc, baseUrl);
 
-                    // Process links: normalize and deduplicate
+                    // Process links with better filtering
                     List<String> uniqueLinks = rawLinks.stream()
-                            .filter(link -> link != null && !link.isBlank())
+                            .filter(Objects::nonNull)
+                            .map(String::trim)
+                            .filter(link -> !link.isEmpty())
                             .map(this::normalizeLink)
-                            .filter(link -> allSeenLinks.add(link)) // Only keep newly seen links
+                            .filter(link -> {
+                                // Skip invalid URLs and already seen links
+                                if (!webScrapeService.isValidUrlForScraping(link)) {
+                                    return false;
+                                }
+                                return allSeenLinks.add(link);
+                            })
                             .collect(Collectors.toList());
 
                     siteMap.put(currentUrl, uniqueLinks);
 
-                    // Add internal links to queue (only if not already visited)
+                    // Add internal links to queue with better filtering
+                    String finalBaseUrl = baseUrl;
                     uniqueLinks.stream()
-                            .filter(link -> link.startsWith(baseUrl) && !visitedUrls.contains(link))
+                            .filter(link -> link.startsWith(finalBaseUrl))
+                            .filter(link -> !visitedUrls.contains(link))
                             .forEach(queue::offer);
 
-                } catch (IOException | InterruptedException e) {
-                    log.error("Failed to crawl page: {}", currentUrl, e);
+                } catch (IOException e) {
+                    log.error("Failed to crawl page after retries: {}", currentUrl, e);
                     siteMap.put(currentUrl, List.of("CRAWL_ERROR: " + e.getMessage()));
-                    if (e instanceof InterruptedException) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("Crawling interrupted while processing: {}", currentUrl, e);
+                    siteMap.put(currentUrl, List.of("CRAWL_INTERRUPTED"));
+                    throw new IOException("Crawling interrupted", e);
                 }
             }
         }
@@ -252,19 +303,36 @@ private void sendBrokenLinksList(String channelId, List<String> brokenLinks) {
     }
 
     private String normalizeLink(String link) {
-        if (link == null) return null;
+        if (link == null || link.isBlank()) {
+            return null;
+        }
 
-        // Basic normalization:
-        // 1. Remove URL fragments (#...)
-        // 2. Remove query parameters (?...)
-        // 3. Normalize trailing slashes
-        // 4. Convert to lowercase (optional)
-        String normalized = link.split("#")[0].split("\\?")[0];
-        normalized = normalized.endsWith("/")
-                ? normalized.substring(0, normalized.length() - 1)
-                : normalized;
+        try {
+            // Handle relative URLs
+            if (!link.startsWith("http")) {
+                return link;
+            }
 
-        return normalized.toLowerCase(); // Optional case normalization
+            URI uri = new URI(link);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            String path = uri.getPath();
+            String normalizedPath = path == null ? "" : path.replaceAll("/+", "/");
+
+            // Rebuild URI without fragment, query params, and with normalized path
+            return new URI(
+                    scheme,
+                    uri.getUserInfo(),
+                    host,
+                    uri.getPort(),
+                    normalizedPath,
+                    null,  // No query
+                    null   // No fragment
+            ).toString().replaceAll("/$", "");
+        } catch (URISyntaxException e) {
+            log.warn("Invalid URL syntax: {}", link, e);
+            return null;
+        }
     }
 
     private Map<String, Map<String, String>> validateSiteLinks(String baseUrl, Map<String, List<String>> siteMap) {

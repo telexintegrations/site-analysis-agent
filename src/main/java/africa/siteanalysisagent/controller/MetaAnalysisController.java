@@ -31,16 +31,11 @@ public class MetaAnalysisController {
             @RequestHeader(value = "X-Telex-Channel-Id", required = false) String channelId,
             @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken) {
 
-        // Validate input
-        if (chatMessage.getUserMessage() == null || chatMessage.getUserMessage().isBlank()) {
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.badRequest().body(ChatResponse.error("Message cannot be blank"))
-            );
-        }
-
-        // Set default values
+        // Set default values for the chat message
         if (chatMessage.getUserId() == null) {
-            chatMessage.setUserId("guest-" + UUID.randomUUID());
+            chatMessage.setUserId(channelId != null ?
+                    "telex-user-" + channelId :
+                    "guest-" + UUID.randomUUID());
         }
         if (chatMessage.getTimestamp() == null) {
             chatMessage.setTimestamp(LocalDateTime.now());
@@ -50,8 +45,9 @@ public class MetaAnalysisController {
             try {
                 ChatResponse response = lynxService.processMessage(chatMessage);
 
-                // If Telex channel, send response back asynchronously
+                // Only try to send back to Telex if we have both channel ID and token
                 if (channelId != null && webhookToken != null) {
+                    telexService.registerChannel(channelId, webhookToken);
                     telexService.sendMessage(channelId, response.getMessage(), response.getButtons())
                             .exceptionally(ex -> {
                                 log.error("Failed to send to Telex channel {}: {}", channelId, ex.getMessage());
@@ -60,8 +56,15 @@ public class MetaAnalysisController {
                 }
 
                 return ResponseEntity.ok(response);
+
             } catch (Exception e) {
                 log.error("Error processing message", e);
+
+                // If we have a channel ID, try to send the error back to Telex
+                if (channelId != null && webhookToken != null) {
+                    telexService.sendMessage(channelId, "Error: " + e.getMessage(), null);
+                }
+
                 return ResponseEntity.internalServerError()
                         .body(ChatResponse.error("Processing failed: " + e.getMessage()));
             }
@@ -74,14 +77,25 @@ public class MetaAnalysisController {
             @RequestHeader(value = "X-Telex-Webhook-Token", required = false) String webhookToken,
             @RequestBody String message) {
 
+        if (channelId == null || webhookToken == null) {
+            log.warn("Missing Telex headers in webhook request");
+            return ResponseEntity.badRequest()
+                    .body(Map.of(
+                            "status", "error",
+                            "message", "X-Telex-Channel-Id and X-Telex-Webhook-Token headers are required",
+                            "timestamp", LocalDateTime.now()
+                    ));
+        }
+
         return telexServiceIntegration.handleTelexWebhook(channelId, webhookToken, message);
     }
 
-    @GetMapping("/telex")
+    @GetMapping("/telex-config")
     public ResponseEntity<?> getTelexConfiguration() {
         try {
             return ResponseEntity.ok(telexServiceIntegration.getTelexConfig());
         } catch (Exception e) {
+            log.error("Failed to get Telex config", e);
             return ResponseEntity.internalServerError()
                     .body(new ApiErrorResponse(
                             "Configuration error",
