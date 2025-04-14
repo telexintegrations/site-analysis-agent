@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,32 +29,41 @@ public class MetaAnalysisController {
 
     @PostMapping("/interact")
     public CompletableFuture<ResponseEntity<?>> handleUserMessage(
-            @RequestBody Map<String, Object> requestBody) { // Parse raw JSON
-        log.info("Raw request body: {}", requestBody);
+            @RequestBody Map<String, Object> requestBody) {
 
+        // 1. Extract Telex parameters from THEIR format
+        String channelId = (String) requestBody.get("channel_id"); // Note: "channel_id" not "channelId"
+        String userMessage = extractMessageFromTelexFormat(requestBody);
 
-        // Extract channelId/webhookToken from JSON body (not headers)
-        String channelId = (String) requestBody.get("channelId");
-        String webhookToken = (String) requestBody.get("webhookToken");
-        String userMessage = (String) requestBody.get("message");
-
-        // Validate
-        if (channelId == null || webhookToken == null) {
-            log.error("Missing Telex params in body. Received: {}", requestBody.keySet());
+        // 2. Validate
+        if (channelId == null) {
             return CompletableFuture.completedFuture(
-                    ResponseEntity.badRequest().body("Missing channelId/webhookToken in JSON body")
+                    ResponseEntity.badRequest().body("Missing channel_id in request")
             );
         }
 
-        // Process message
+        // 3. Process message
         ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setUserId(channelId); // Use Telex's channelId directly
+        chatMessage.setUserId(channelId);
         chatMessage.setUserMessage(userMessage);
 
         ChatResponse response = lynxService.processMessage(chatMessage);
+
+        // 4. Send response back to Telex
         telexService.sendMessage(channelId, response.getMessage());
 
         return CompletableFuture.completedFuture(ResponseEntity.ok(response));
+    }
+
+    private String extractMessageFromTelexFormat(Map<String, Object> requestBody) {
+        try {
+            // Handle HTML-formatted message
+            String rawHtml = (String) requestBody.get("message");
+            return Jsoup.parse(rawHtml).text(); // Extract plain text
+        } catch (Exception e) {
+            log.warn("Failed to parse Telex message", e);
+            return "";
+        }
     }
 
     @PostMapping("/telex-webhook")
