@@ -28,38 +28,32 @@ public class MetaAnalysisController {
 
     @PostMapping("/interact")
     public CompletableFuture<ResponseEntity<?>> handleUserMessage(
-            HttpServletRequest request,
-            @Valid @RequestBody ChatMessage chatMessage,
-            @RequestHeader(value = "Telex-Channel-Id", required = false) String channelId,
-            @RequestHeader(value = "Telex-Webhook-Token", required = false) String webhookToken) {
+            @RequestBody Map<String, Object> requestBody) { // Parse raw JSON
+        log.info("Raw request body: {}", requestBody);
 
-        Collections.list(request.getHeaderNames())
-                .forEach(header -> log.info("Header: {} = {}", header, request.getHeader(header)));
 
+        // Extract channelId/webhookToken from JSON body (not headers)
+        String channelId = (String) requestBody.get("channelId");
+        String webhookToken = (String) requestBody.get("webhookToken");
+        String userMessage = (String) requestBody.get("message");
+
+        // Validate
         if (channelId == null || webhookToken == null) {
-            log.error("Missing Telex headers. Received headers: {}", request.getHeaderNames());
+            log.error("Missing Telex params in body. Received: {}", requestBody.keySet());
             return CompletableFuture.completedFuture(
-                    ResponseEntity.badRequest().body("Missing required headers")
+                    ResponseEntity.badRequest().body("Missing channelId/webhookToken in JSON body")
             );
         }
 
-        chatMessage.setUserId(channelId);
-        chatMessage.setTimestamp(LocalDateTime.now());
+        // Process message
+        ChatMessage chatMessage = new ChatMessage();
+        chatMessage.setUserId(channelId); // Use Telex's channelId directly
+        chatMessage.setUserMessage(userMessage);
 
+        ChatResponse response = lynxService.processMessage(chatMessage);
+        telexService.sendMessage(channelId, response.getMessage());
 
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                ChatResponse response = lynxService.processMessage(chatMessage);
-
-
-                    telexService.sendMessage(channelId, response.getMessage());
-                    return ResponseEntity.ok(response);
-            } catch (Exception e) {
-                log.error("Error processing message", e);
-            telexService.sendMessage(channelId, "Error: " + e.getMessage());
-            return ResponseEntity.internalServerError().build();
-            }
-        });
+        return CompletableFuture.completedFuture(ResponseEntity.ok(response));
     }
 
     @PostMapping("/telex-webhook")
